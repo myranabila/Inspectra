@@ -1,19 +1,61 @@
-﻿# Python
+﻿# PYTHON / FASTAPI BACKEND
+
+# Virtual environments
 venv/
 backend/venv/
+env/
+backend/env/
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Backend build & cache
+# Logs
 *.log
 
-# Flutter
+# Environment files (VERY IMPORTANT — NEVER PUSH THESE)
+.env
+*.env
+
+# SQLite (if ever used)
+*.sqlite3
+
+# VS Code
+.vscode/
+.history/
+
+# FLUTTER FRONTEND
 **/build/
 .dart_tool/
 .packages
 .pub-cache/
 flutter_export_environment.sh
 
-# OS junk files
+# Android specific
+android/.gradle/
+android/app/release/
+android/app/profile/
+android/app/*.keystore
+android/key.properties
+
+# iOS specific
+ios/Pods/
+ios/Podfile.lock
+ios/.symlinks/
+ios/Flutter/Flutter.podspec
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+
+# OS JUNK FILES
 .DS_Store
 Thumbs.db
+
+# IDE
+.idea/
+*.iml
+
+# ignore any backend env files
+backend/.env
+backend/.env*
