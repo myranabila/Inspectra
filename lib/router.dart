@@ -1,15 +1,14 @@
-// lib/router.dart
+
 
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 
-// Ensure these imports correctly point to your screen files
+
 import 'dashboard_screen.dart';
 import 'profile_screen.dart'; 
 import 'upload_screen.dart'; 
 
-// --- Temporary Edit Screen Placeholder ---
-// In a real app, this would be EditProfileScreen
+
 class EditProfilePlaceholderScreen extends StatelessWidget {
   const EditProfilePlaceholderScreen({super.key});
   @override
@@ -20,37 +19,37 @@ class EditProfilePlaceholderScreen extends StatelessWidget {
     );
   }
 }
-// ------------------------------------------
+
 
 final router = GoRouter(
   initialLocation: '/',
   routes: [
-    // Dashboard Route (Home page)
+    
     GoRoute(
       path: '/', 
       builder: (_, __) => const DashboardScreen(),
     ),
-    // Profile Route (Parent Route)
+    
     GoRoute(
       path: '/profile', 
       builder: (_, __) => const ProfileScreen(),
       routes: [
-        // Nested Edit Route
+        
         GoRoute(
           path: 'edit',
-          builder: (_, __) => const EditProfilePlaceholderScreen(), // Placeholder
+          builder: (_, __) => const EditProfilePlaceholderScreen(), 
         ),
       ],
     ),
-    // Media Manager/Upload Route
+    
     GoRoute(
       path: '/upload', 
       builder: (_, __) => const UploadScreen(),
     ),
-    // Inspection Jobs Route (Next planned feature)
+    
     GoRoute(
       path: '/jobs',
-      // NOTE: Placeholder for the InspectionJobsScreen you will create next
+      
       builder: (_, __) => const DashboardScreen(), 
     ),
   ],
