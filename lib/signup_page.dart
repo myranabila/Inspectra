@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/auth_service.dart';
 
 class SignUpPage extends StatefulWidget {
   final VoidCallback onBackToLogin;
@@ -11,6 +12,7 @@ class SignUpPage extends StatefulWidget {
 class _SignUpPageState extends State<SignUpPage> {
   final _formKey = GlobalKey<FormState>();
 
+  final _usernameController = TextEditingController();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -20,17 +22,12 @@ class _SignUpPageState extends State<SignUpPage> {
   String? _error;
   bool _loading = false;
 
-  // Only inspector & manager
-  final List<String> _roles = [
-    'inspector',
-    'manager',
-  ];
-
   Future<void> _submit() async {
     setState(() => _error = null);
 
     if (!_formKey.currentState!.validate()) return;
 
+    final username = _usernameController.text.trim();
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final pass = _passwordController.text;
@@ -56,10 +53,28 @@ class _SignUpPageState extends State<SignUpPage> {
     setState(() => _loading = true);
 
     try {
-      await Future.delayed(Duration(seconds: 1));
-      // TODO: Replace with actual register API
+      // Call the real backend API
+      await AuthService.register(
+        username: username,
+        password: pass,
+        fullName: name,
+        email: email,
+      );
+
+      // Show success message and navigate back to login
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully! Please login.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pushReplacementNamed(context, '/login');
+      }
     } catch (e) {
-      setState(() => _error = 'Registration failed');
+      setState(() {
+        _error = e.toString().replaceAll('Exception: ', '');
+      });
     } finally {
       setState(() => _loading = false);
     }
@@ -102,12 +117,19 @@ class _SignUpPageState extends State<SignUpPage> {
                               shape: BoxShape.circle,
                               color: Colors.blue.shade600,
                             ),
-                            child: const Icon(Icons.checklist, color: Colors.white, size: 32),
+                            child: const Icon(
+                              Icons.checklist,
+                              color: Colors.white,
+                              size: 32,
+                            ),
                           ),
                           const SizedBox(height: 16),
                           const Text(
                             'Create Your Account',
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(
@@ -127,7 +149,10 @@ class _SignUpPageState extends State<SignUpPage> {
                             color: Colors.red.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
                         ),
 
                       const SizedBox(height: 12),
@@ -137,7 +162,28 @@ class _SignUpPageState extends State<SignUpPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Full Name', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Username',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _usernameController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: 'Username',
+                                isDense: true,
+                              ),
+                              validator: (v) =>
+                                  v!.isEmpty ? 'Enter username' : null,
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            const Text(
+                              'Full Name',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _nameController,
@@ -146,12 +192,16 @@ class _SignUpPageState extends State<SignUpPage> {
                                 hintText: 'Full Name',
                                 isDense: true,
                               ),
-                              validator: (v) => v!.isEmpty ? 'Enter your full name' : null,
+                              validator: (v) =>
+                                  v!.isEmpty ? 'Enter your full name' : null,
                             ),
 
                             const SizedBox(height: 12),
 
-                            const Text('Email', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Email',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _emailController,
@@ -160,12 +210,16 @@ class _SignUpPageState extends State<SignUpPage> {
                                 hintText: 'Email',
                                 isDense: true,
                               ),
-                              validator: (v) => v!.isEmpty ? 'Enter email' : null,
+                              validator: (v) =>
+                                  v!.isEmpty ? 'Enter email' : null,
                             ),
 
                             const SizedBox(height: 12),
 
-                            const Text('Role', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Role',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 6),
 
                             // Updated Dropdown with "Choose role" shown first
@@ -188,8 +242,14 @@ class _SignUpPageState extends State<SignUpPage> {
                                 ),
 
                                 // Actual roles
-                                DropdownMenuItem(value: 'inspector', child: Text('inspector')),
-                                DropdownMenuItem(value: 'manager', child: Text('manager')),
+                                const DropdownMenuItem(
+                                  value: 'inspector',
+                                  child: Text('inspector'),
+                                ),
+                                const DropdownMenuItem(
+                                  value: 'manager',
+                                  child: Text('manager'),
+                                ),
                               ],
                               onChanged: (val) => setState(() => _role = val),
                               validator: (value) =>
@@ -199,12 +259,18 @@ class _SignUpPageState extends State<SignUpPage> {
                             const SizedBox(height: 4),
                             Text(
                               'Select your role in the organization',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
                             ),
 
                             const SizedBox(height: 12),
 
-                            const Text('Password', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Password',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _passwordController,
@@ -214,15 +280,24 @@ class _SignUpPageState extends State<SignUpPage> {
                                 hintText: 'Password',
                                 isDense: true,
                               ),
-                              validator: (v) => v!.isEmpty ? 'Enter password' : null,
+                              validator: (v) =>
+                                  v!.isEmpty ? 'Enter password' : null,
                             ),
                             const SizedBox(height: 4),
-                            Text('Must be at least 6 characters',
-                                style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text(
+                              'Must be at least 6 characters',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
 
                             const SizedBox(height: 12),
 
-                            const Text('Confirm Password', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Confirm Password',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _confirmController,
@@ -232,7 +307,8 @@ class _SignUpPageState extends State<SignUpPage> {
                                 hintText: 'Confirm Password',
                                 isDense: true,
                               ),
-                              validator: (v) => v!.isEmpty ? 'Confirm password' : null,
+                              validator: (v) =>
+                                  v!.isEmpty ? 'Confirm password' : null,
                             ),
 
                             const SizedBox(height: 16),
@@ -243,7 +319,9 @@ class _SignUpPageState extends State<SignUpPage> {
                                 onPressed: _loading ? null : _submit,
                                 child: _loading
                                     ? const CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 2)
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      )
                                     : const Text('Sign Up'),
                               ),
                             ),

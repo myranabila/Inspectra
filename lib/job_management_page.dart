@@ -18,7 +18,7 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
       'inspector': 'Ahmad Abdullah',
       'scheduledDate': '2025-11-08',
       'status': 'Scheduled',
-      'priority': 'High'
+      'priority': 'High',
     },
     {
       'id': 'INS-002',
@@ -27,7 +27,7 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
       'inspector': 'Siti Nurhaliza',
       'scheduledDate': '2025-11-10',
       'status': 'In Progress',
-      'priority': 'Critical'
+      'priority': 'Critical',
     },
     {
       'id': 'INS-003',
@@ -36,7 +36,7 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
       'inspector': 'Muhammad Ali',
       'scheduledDate': '2025-11-12',
       'status': 'Completed',
-      'priority': 'Medium'
+      'priority': 'Medium',
     },
     {
       'id': 'INS-004',
@@ -45,7 +45,7 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
       'inspector': 'Ahmad Abdullah',
       'scheduledDate': '2025-11-15',
       'status': 'Scheduled',
-      'priority': 'Medium'
+      'priority': 'Medium',
     },
   ];
 
@@ -144,7 +144,9 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
                     backgroundColor: Colors.black87,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 20),
+                      vertical: 12,
+                      horizontal: 20,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -161,10 +163,7 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
               padding: EdgeInsets.only(left: 56),
               child: Text(
                 "Manage and schedule inspection jobs",
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
             ),
 
@@ -176,7 +175,8 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
             Expanded(
               child: Card(
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18)),
+                  borderRadius: BorderRadius.circular(18),
+                ),
                 elevation: 1.5,
                 color: Colors.white,
                 child: Padding(
@@ -249,7 +249,8 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
                                   Colors.grey.shade200,
                                 ),
                                 columnSpacing: 32,
-                                dataRowHeight: 58,
+                                dataRowMinHeight: 58,
+                                dataRowMaxHeight: 58,
                                 columns: const [
                                   DataColumn(label: Text('ID')),
                                   DataColumn(label: Text('Title')),
@@ -261,87 +262,117 @@ class _InspectionJobModuleState extends State<InspectionJobModule> {
                                   DataColumn(label: Text('Actions')),
                                 ],
                                 rows: inspections
-                                    .where((i) => i['title']!
-                                        .toLowerCase()
-                                        .contains(searchTerm.toLowerCase()))
+                                    .where(
+                                      (i) => i['title']!.toLowerCase().contains(
+                                        searchTerm.toLowerCase(),
+                                      ),
+                                    )
                                     .map((inspection) {
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(Text(inspection['id']!)),
-                                      DataCell(Text(inspection['title']!)),
-                                      DataCell(Row(
-                                        children: [
-                                          const Icon(Icons.location_on,
-                                              size: 14, color: Colors.grey),
-                                          const SizedBox(width: 4),
-                                          Text(inspection['location']!),
-                                        ],
-                                      )),
-                                      DataCell(Row(
-                                        children: [
-                                          const Icon(Icons.person,
-                                              size: 14, color: Colors.grey),
-                                          const SizedBox(width: 4),
-                                          Text(inspection['inspector']!),
-                                        ],
-                                      )),
-                                      DataCell(Row(
-                                        children: [
-                                          const Icon(Icons.calendar_today,
-                                              size: 14, color: Colors.grey),
-                                          const SizedBox(width: 4),
-                                          Text(inspection['scheduledDate']!),
-                                        ],
-                                      )),
-                                      DataCell(
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: statusColor(
-                                                inspection['status']!),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            inspection['status']!,
-                                            style: TextStyle(
-                                              color: statusTextColor(
-                                                  inspection['status']!),
-                                              fontWeight: FontWeight.w600,
+                                      return DataRow(
+                                        cells: [
+                                          DataCell(Text(inspection['id']!)),
+                                          DataCell(Text(inspection['title']!)),
+                                          DataCell(
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.location_on,
+                                                  size: 14,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(inspection['location']!),
+                                              ],
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: priorityColor(
-                                                inspection['priority']!),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            inspection['priority']!,
-                                            style: TextStyle(
-                                              color: priorityTextColor(
-                                                  inspection['priority']!),
-                                              fontWeight: FontWeight.w600,
+                                          DataCell(
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.person,
+                                                  size: 14,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(inspection['inspector']!),
+                                              ],
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        TextButton(
-                                          onPressed: () {},
-                                          child: const Text("View"),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
+                                          DataCell(
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.calendar_today,
+                                                  size: 14,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  inspection['scheduledDate']!,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: statusColor(
+                                                  inspection['status']!,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Text(
+                                                inspection['status']!,
+                                                style: TextStyle(
+                                                  color: statusTextColor(
+                                                    inspection['status']!,
+                                                  ),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: priorityColor(
+                                                  inspection['priority']!,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Text(
+                                                inspection['priority']!,
+                                                style: TextStyle(
+                                                  color: priorityTextColor(
+                                                    inspection['priority']!,
+                                                  ),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            TextButton(
+                                              onPressed: () {},
+                                              child: const Text("View"),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    })
+                                    .toList(),
                               ),
                             ),
                           ),

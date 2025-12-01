@@ -51,10 +51,21 @@ def get_password_hash(password: str):
 # AUTHENTICATE USER
 
 def authenticate_user(db: Session, username: str, password: str):
+    print(f"\n[DEBUG] Attempting login for username: '{username}'")
+    print(f"[DEBUG] Password length: {len(password)}")
+    
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user:
+        print(f"[DEBUG] User not found: '{username}'")
         return None
-    if not verify_password(password, user.password_hash):
+    
+    print(f"[DEBUG] User found: {user.username}")
+    print(f"[DEBUG] Stored hash starts with: {user.password_hash[:30]}...")
+    
+    verification_result = verify_password(password, user.password_hash)
+    print(f"[DEBUG] Password verification result: {verification_result}")
+    
+    if not verification_result:
         return None
     return user
 

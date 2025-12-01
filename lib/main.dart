@@ -31,10 +31,10 @@ class WorkshopApp extends StatelessWidget {
 
         // Signup Page
         '/signup': (context) => SignUpPage(
-              onBackToLogin: () {
-                Navigator.pushReplacementNamed(context, '/login');
-              },
-            ),
+          onBackToLogin: () {
+            Navigator.pushReplacementNamed(context, '/login');
+          },
+        ),
 
         // Dashboard Page
         '/dashboard': (context) => const DashboardModule(),
@@ -47,13 +47,13 @@ class WorkshopApp extends StatelessWidget {
 
         // Placeholder routes
         //'/repository': (context) =>
-            //const PlaceholderPage(title: "Report Repository"),
+        //const PlaceholderPage(title: "Report Repository"),
         //'/maintenance': (context) =>
-            //const PlaceholderPage(title: "Maintenance Tasks"),
+        //const PlaceholderPage(title: "Maintenance Tasks"),
         //'/analytics': (context) =>
-            //const PlaceholderPage(title: "Analytics & Reports"),
+        //const PlaceholderPage(title: "Analytics & Reports"),
         //'/notifications': (context) =>
-            //const PlaceholderPage(title: "Notifications"),
+        //const PlaceholderPage(title: "Notifications"),
 
         // Logout
         '/logout': (context) => const LoginPage(),

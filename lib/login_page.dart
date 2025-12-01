@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -9,9 +10,8 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-
-  final _emailController = TextEditingController(text: 'admin@example.com');
-  final _passwordController = TextEditingController(text: 'password');
+  final _emailController = TextEditingController(text: '');
+  final _passwordController = TextEditingController(text: '');
 
   String? _error;
   bool _loading = false;
@@ -20,22 +20,26 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _error = null);
     if (!_formKey.currentState!.validate()) return;
 
-    final email = _emailController.text.trim();
+    final username = _emailController.text.trim();
     final password = _passwordController.text;
 
     setState(() => _loading = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
-      // Replace with real login API
-      if (!(email == 'admin@example.com' && password == 'password')) {
-        throw Exception('Invalid email or password');
-      } else {
-        // Navigate to dashboard on successful login
+      // Call the real backend API
+      final response = await AuthService.login(
+        username: username,
+        password: password,
+      );
+
+      // If login successful, navigate to dashboard
+      if (response['access_token'] != null && mounted) {
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
     } catch (e) {
-      setState(() => _error = 'Invalid email or password');
+      setState(() {
+        _error = e.toString().replaceAll('Exception: ', '');
+      });
     } finally {
       setState(() => _loading = false);
     }
@@ -78,21 +82,28 @@ class _LoginPageState extends State<LoginPage> {
                             color: Colors.blue.shade600,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.checklist,
-                              color: Colors.white, size: 32),
+                          child: const Icon(
+                            Icons.checklist,
+                            color: Colors.white,
+                            size: 32,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         const Text(
                           'Inspection System',
                           style: TextStyle(
-                              fontSize: 24, fontWeight: FontWeight.w600),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Sign in to your account to continue',
                           style: TextStyle(
-                              fontSize: 14, color: Colors.grey.shade700),
+                            fontSize: 14,
+                            color: Colors.grey.shade700,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -114,30 +125,37 @@ class _LoginPageState extends State<LoginPage> {
                                 color: Colors.red.shade50,
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: Text(_error!,
-                                  style: TextStyle(color: Colors.red.shade700)),
+                              child: Text(
+                                _error!,
+                                style: TextStyle(color: Colors.red.shade700),
+                              ),
                             ),
 
                           // Email
-                          const Text('Email',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Text(
+                            'Username',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 6),
                           TextFormField(
                             controller: _emailController,
                             decoration: const InputDecoration(
                               border: OutlineInputBorder(),
-                              hintText: 'Email',
+                              hintText: 'Username',
                               isDense: true,
                             ),
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'Enter email' : null,
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Enter username'
+                                : null,
                           ),
 
                           const SizedBox(height: 12),
 
                           // Password
-                          const Text('Password',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Text(
+                            'Password',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 6),
                           TextFormField(
                             controller: _passwordController,
@@ -147,8 +165,9 @@ class _LoginPageState extends State<LoginPage> {
                               hintText: 'Password',
                               isDense: true,
                             ),
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'Enter password' : null,
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Enter password'
+                                : null,
                           ),
 
                           const SizedBox(height: 16),
@@ -163,7 +182,9 @@ class _LoginPageState extends State<LoginPage> {
                                       height: 18,
                                       width: 18,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white),
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
                                     )
                                   : const Text('Sign In'),
                             ),
@@ -178,13 +199,12 @@ class _LoginPageState extends State<LoginPage> {
                                 Navigator.pushNamed(context, '/signup');
                               },
                               child: const Text(
-                                  "Don't have an account? Sign up here"),
+                                "Don't have an account? Sign up here",
+                              ),
                             ),
                           ),
 
                           const SizedBox(height: 20),
-
-                    
                         ],
                       ),
                     ),
