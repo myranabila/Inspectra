@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/report_service.dart';
 
 class ReportReviewPage extends StatelessWidget {
   const ReportReviewPage({super.key});
@@ -213,7 +214,15 @@ class ReportReviewPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       OutlinedButton(
-                        onPressed: () {},
+                        onPressed: () async {
+                          // TODO: Get reportId and reason from UI
+                          final reportId = 1; // Replace with actual report ID
+                          final reason = 'Needs revision'; // Replace with actual reason
+                          final result = await ReportService.rejectReport(reportId, reason);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result['message'] ?? 'Revision requested')),
+                          );
+                        },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: const BorderSide(color: Colors.red),
@@ -223,7 +232,14 @@ class ReportReviewPage extends StatelessWidget {
                       const SizedBox(width: 12),
 
                       ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () async {
+                          // TODO: Get reportId from UI
+                          final reportId = 1; // Replace with actual report ID
+                          final result = await ReportService.approveReport(reportId);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result['message'] ?? 'Report approved')),
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,

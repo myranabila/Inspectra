@@ -1,10 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+def ensure_pdf_for_inspection(inspection):
+    """Ensure the inspection has a PDF report. If not, assign a sample PDF based on status."""
+    if not inspection.pdf_report_path or not os.path.exists(inspection.pdf_report_path):
+        status = inspection.status.value
+        sample_map = {
+            'scheduled': 'reports/sample_pdfs/sample_scheduled.pdf',
+            'pending_review': 'reports/sample_pdfs/sample_pending_review.pdf',
+            'completed': 'reports/sample_pdfs/sample_completed.pdf',
+            'rejected': 'reports/sample_pdfs/sample_rejected.pdf',
+        }
+        sample_pdf = sample_map.get(status)
+        if sample_pdf and os.path.exists(sample_pdf):
+            inspection.pdf_report_path = sample_pdf
+    return inspection
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
-from datetime import datetime, date
-import models
+from datetime import datetime, date, timedelta
 from db import get_db
 from auth import get_current_user
+import models
+import os
+import shutil
+from pathlib import Path
 
 router = APIRouter()
 
@@ -34,181 +52,151 @@ def get_my_tasks(
         "id": insp.id,
         "title": insp.title,
         "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "rejection_reason": insp.rejection_reason,
+        "rejection_feedback": insp.rejection_feedback,
+        "rejection_count": insp.rejection_count,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
-@router.get("/stats/monthly")
-def get_monthly_stats(
+@router.get("/history")
+def get_inspection_history(
+    month: int = None,
+    year: int = None,
+    status: str = None,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get dashboard statistics for the current month"""
+    """Get inspection history with optional filters for month, year, and status"""
     
-    # Get current month and year
-    now = datetime.now()
-    current_month = now.month
-    current_year = now.year
+    if current_user.role != models.RoleEnum.inspector:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only inspectors can access this endpoint"
+        )
     
-    # ROLE-BASED FILTERING
-    # Inspectors: Only see approved/completed work (all stats show 0 until manager approves)
-    # Managers: See all data
+    # Start with base query for this inspector
+    query = db.query(models.Inspection).filter(
+        models.Inspection.inspector_id == current_user.id
+    )
     
-    if current_user.role == models.RoleEnum.inspector:
-        # For inspectors, only count APPROVED reports and COMPLETED inspections
-        # This means their dashboard shows 0 until manager approves their work
-        
-        # Total Inspections - only completed and approved by manager
-        total_inspections = db.query(models.Inspection).filter(
-            models.Inspection.inspector_id == current_user.id,
-            models.Inspection.status == models.InspectionStatusEnum.completed
-        ).count()
-        
-        # Inspections this month - only completed
-        inspections_this_month = db.query(models.Inspection).filter(
-            models.Inspection.inspector_id == current_user.id,
-            models.Inspection.status == models.InspectionStatusEnum.completed,
-            extract('month', models.Inspection.completion_date) == current_month,
-            extract('year', models.Inspection.completion_date) == current_year
-        ).count()
-        
-        # Total Reports - only approved
-        total_reports = db.query(models.Report).filter(
-            models.Report.created_by == current_user.id,
-            models.Report.status == models.ReportStatusEnum.approved
-        ).count()
-        
-        # Reports this month - only approved
-        reports_this_month = db.query(models.Report).filter(
-            models.Report.created_by == current_user.id,
-            models.Report.status == models.ReportStatusEnum.approved,
-            extract('month', models.Report.created_at) == current_month,
-            extract('year', models.Report.created_at) == current_year
-        ).count()
-        
-        # Pending Review - inspector cannot see pending items (shows 0)
-        pending_review_inspections = 0
-        pending_review_reports = 0
-        
-        # Completed this month - only approved completed work
-        completed_this_month = inspections_this_month
-        
-        # Previous month stats for inspectors
-        prev_month = current_month - 1 if current_month > 1 else 12
-        prev_year = current_year if current_month > 1 else current_year - 1
-        
-        inspections_prev_month = db.query(models.Inspection).filter(
-            models.Inspection.inspector_id == current_user.id,
-            models.Inspection.status == models.InspectionStatusEnum.completed,
-            extract('month', models.Inspection.completion_date) == prev_month,
-            extract('year', models.Inspection.completion_date) == prev_year
-        ).count()
-        
-        reports_prev_month = db.query(models.Report).filter(
-            models.Report.created_by == current_user.id,
-            models.Report.status == models.ReportStatusEnum.approved,
-            extract('month', models.Report.created_at) == prev_month,
-            extract('year', models.Report.created_at) == prev_year
-        ).count()
-        
-        completed_prev_month = inspections_prev_month
-        
-    else:  # Manager role
-        # Managers see ALL data
-        
-        # Total Inspections (all time)
-        total_inspections = db.query(models.Inspection).count()
-        
-        # Inspections this month
-        inspections_this_month = db.query(models.Inspection).filter(
-            extract('month', models.Inspection.created_at) == current_month,
-            extract('year', models.Inspection.created_at) == current_year
-        ).count()
-        
-        # Total Reports Generated (all time)
-        total_reports = db.query(models.Report).count()
-        
-        # Reports this month
-        reports_this_month = db.query(models.Report).filter(
-            extract('month', models.Report.created_at) == current_month,
-            extract('year', models.Report.created_at) == current_year
-        ).count()
-        
-        # Pending Review (inspections)
-        pending_review_inspections = db.query(models.Inspection).filter(
-            models.Inspection.status == models.InspectionStatusEnum.pending_review
-        ).count()
-        
-        # Pending Review (reports)
-        pending_review_reports = db.query(models.Report).filter(
-            models.Report.status == models.ReportStatusEnum.pending_review
-        ).count()
+    # Apply month filter (filter by scheduled_date month)
+    if month is not None:
+        query = query.filter(extract('month', models.Inspection.scheduled_date) == month)
     
-    total_pending_review = pending_review_inspections + pending_review_reports
+    # Apply year filter (filter by scheduled_date year)
+    if year is not None:
+        query = query.filter(extract('year', models.Inspection.scheduled_date) == year)
     
-    # Completed This Month - for managers only
-    if current_user.role == models.RoleEnum.manager:
-        completed_this_month = db.query(models.Inspection).filter(
-            models.Inspection.status == models.InspectionStatusEnum.completed,
-            extract('month', models.Inspection.completion_date) == current_month,
-            extract('year', models.Inspection.completion_date) == current_year
-        ).count()
-        
-        # Get previous month stats for managers
-        prev_month = current_month - 1 if current_month > 1 else 12
-        prev_year = current_year if current_month > 1 else current_year - 1
-        
-        inspections_prev_month = db.query(models.Inspection).filter(
-            extract('month', models.Inspection.created_at) == prev_month,
-            extract('year', models.Inspection.created_at) == prev_year
-        ).count()
-        
-        reports_prev_month = db.query(models.Report).filter(
-            extract('month', models.Report.created_at) == prev_month,
-            extract('year', models.Report.created_at) == prev_year
-        ).count()
-        
-        completed_prev_month = db.query(models.Inspection).filter(
-            models.Inspection.status == models.InspectionStatusEnum.completed,
-            extract('month', models.Inspection.completion_date) == prev_month,
-            extract('year', models.Inspection.completion_date) == prev_year
-        ).count()
-    # For inspectors, completed_this_month, inspections_prev_month, reports_prev_month, 
-    # completed_prev_month are already set above
+    # Apply status filter
+    if status and status.lower() != 'all':
+        try:
+            status_enum = models.InspectionStatusEnum[status]
+            query = query.filter(models.Inspection.status == status_enum)
+        except KeyError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {status}"
+            )
     
-    # Calculate percentage changes
-    def calc_change(current, previous):
-        if previous == 0:
-            return "+100%" if current > 0 else "0%"
-        change = ((current - previous) / previous) * 100
-        sign = "+" if change >= 0 else ""
-        return f"{sign}{int(change)}%"
+    # Get all matching inspections
+    inspections = query.order_by(
+        models.Inspection.scheduled_date.desc(),
+        models.Inspection.created_at.desc()
+    ).all()
     
-    inspections_change = calc_change(inspections_this_month, inspections_prev_month)
-    reports_change = calc_change(reports_this_month, reports_prev_month)
-    completed_change = calc_change(completed_this_month, completed_prev_month)
+    # Get total count
+    total_count = len(inspections)
+    
+    # Format response
+    result = [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "rejection_reason": insp.rejection_reason,
+        "rejection_feedback": insp.rejection_feedback,
+        "rejection_count": insp.rejection_count,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]
     
     return {
+        "total_count": total_count,
+        "inspections": result
+    }
+
+def get_start_date_from_period(period: str) -> date | None:
+    """Calculate the start date based on the period string."""
+    today = date.today()
+    if period == "day":
+        return today
+    elif period == "week":
+        return today - timedelta(days=today.weekday())
+    elif period == "month":
+        return today.replace(day=1)
+    elif period == "year":
+        return today.replace(month=1, day=1)
+    return None # "all"
+
+@router.get("/stats")
+def get_dashboard_stats(
+    period: str = "all", # "all", "year", "month", "week", "day"
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get dashboard statistics based on a time period."""
+
+    start_date = get_start_date_from_period(period)
+
+    # Base query for inspections, filtered by role
+    query = db.query(models.Inspection)
+    if current_user.role == models.RoleEnum.inspector:
+        query = query.filter(models.Inspection.inspector_id == current_user.id)
+
+    # 1. Total Inspections (Created in period)
+    total_query = query
+    if start_date:
+        total_query = total_query.filter(models.Inspection.created_at >= start_date)
+    total_inspections = total_query.count()
+
+    # 2. Completed (Completed in period)
+    completed_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.completed)
+    if start_date:
+        completed_query = completed_query.filter(models.Inspection.completion_date >= start_date)
+    completed = completed_query.count()
+
+    # 3. Scheduled (Scheduled in period)
+    scheduled_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.scheduled)
+    if start_date:
+        scheduled_query = scheduled_query.filter(models.Inspection.scheduled_date >= start_date)
+    scheduled = scheduled_query.count()
+
+    # 4. Pending Review (Created in period)
+    pending_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.pending_review)
+    if start_date:
+        pending_query = pending_query.filter(models.Inspection.created_at >= start_date)
+    pending_review = pending_query.count()
+
+    # 5. Reports Generated (Same as completed)
+    reports_generated = completed
+
+    return {
         "total_inspections": total_inspections,
-        "inspections_this_month": inspections_this_month,
-        "inspections_change": inspections_change,
-        
-        "total_reports": total_reports,
-        "reports_this_month": reports_this_month,
-        "reports_change": reports_change,
-        
-        "pending_review": total_pending_review,
-        "pending_review_inspections": pending_review_inspections,
-        "pending_review_reports": pending_review_reports,
-        
-        "completed_this_month": completed_this_month,
-        "completed_change": completed_change,
-        
-        "current_month": now.strftime("%B %Y"),
-        "user_role": current_user.role.value
+        "reports_generated": reports_generated,
+        "pending_review": pending_review,
+        "completed": completed,
+        "scheduled": scheduled,
+        "filter_period": period,
     }
 
 @router.get("/inspections/recent")
@@ -242,8 +230,10 @@ def get_recent_inspections(
         "title": insp.title,
         "status": insp.status.value,
         "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
-        "inspector": insp.inspector.full_name if insp.inspector else "Unassigned",
+        "inspector": insp.inspector.username if insp.inspector else "Unassigned",
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -278,6 +268,290 @@ def get_recent_reports(
         "title": report.title,
         "status": report.status.value,
         "inspection": report.inspection.title if report.inspection else "N/A",
-        "created_by": report.created_by_user.full_name if report.created_by_user else "Unknown",
+        "created_by": report.created_by_user.username if report.created_by_user else "Unknown",
         "created_at": report.created_at.isoformat()
     } for report in reports]
+
+@router.get("/inspections/all")
+def get_all_inspections(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all inspections - role-based filtering"""
+    
+    # Role-based filtering
+    if current_user.role == models.RoleEnum.inspector:
+        # Inspectors see only their own inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.inspector_id == current_user.id
+        ).order_by(
+            models.Inspection.scheduled_date.desc(),
+            models.Inspection.created_at.desc()
+        ).all()
+    else:
+        # Managers see all inspections
+        inspections = db.query(models.Inspection).order_by(
+            models.Inspection.scheduled_date.desc(),
+            models.Inspection.created_at.desc()
+        ).all()
+    
+    return [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]
+
+@router.get("/inspections/completed")
+def get_completed_inspections(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get completed inspections (Reports Generated) - role-based filtering"""
+    
+    # Role-based filtering
+    if current_user.role == models.RoleEnum.inspector:
+        # Inspectors see only their own completed inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.inspector_id == current_user.id,
+            models.Inspection.status == models.InspectionStatusEnum.completed
+        ).order_by(
+            models.Inspection.completion_date.desc()
+        ).all()
+    else:
+        # Managers see all completed inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.status == models.InspectionStatusEnum.completed
+        ).order_by(
+            models.Inspection.completion_date.desc()
+        ).all()
+    
+    return [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]
+
+@router.get("/inspections/pending-review")
+def get_pending_review_inspections(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get pending review inspections - role-based filtering"""
+    
+    # Role-based filtering
+    if current_user.role == models.RoleEnum.inspector:
+        # Inspectors see only their own pending review inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.inspector_id == current_user.id,
+            models.Inspection.status == models.InspectionStatusEnum.pending_review
+        ).order_by(
+            models.Inspection.created_at.desc()
+        ).all()
+    else:
+        # Managers see all pending review inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.status == models.InspectionStatusEnum.pending_review
+        ).order_by(
+            models.Inspection.created_at.desc()
+        ).all()
+    
+    return [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]
+
+@router.get("/inspections/completed-this-month")
+def get_completed_this_month(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get inspections completed this month - role-based filtering"""
+    
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+    
+    # Role-based filtering
+    if current_user.role == models.RoleEnum.inspector:
+        # Inspectors see only their own completed inspections this month
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.inspector_id == current_user.id,
+            models.Inspection.status == models.InspectionStatusEnum.completed,
+            extract('month', models.Inspection.completion_date) == current_month,
+            extract('year', models.Inspection.completion_date) == current_year
+        ).order_by(
+            models.Inspection.completion_date.desc()
+        ).all()
+    else:
+        # Managers see all completed inspections this month
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.status == models.InspectionStatusEnum.completed,
+            extract('month', models.Inspection.completion_date) == current_month,
+            extract('year', models.Inspection.completion_date) == current_year
+        ).order_by(
+            models.Inspection.completion_date.desc()
+        ).all()
+    
+    return [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]
+
+@router.post("/inspections/{inspection_id}/submit")
+async def submit_inspection_report(
+    inspection_id: int,
+    findings: str,
+    recommendations: str,
+    notes: str = None,
+    pdf_file: UploadFile = File(None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Submit inspection report for manager review with optional PDF"""
+    
+    if current_user.role != models.RoleEnum.inspector:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only inspectors can submit reports"
+        )
+    
+    # Get the inspection
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id,
+        models.Inspection.inspector_id == current_user.id
+    ).first()
+    
+    if not inspection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inspection not found or not assigned to you"
+        )
+    
+    # Save PDF file if provided
+    pdf_path = None
+    if pdf_file:
+        # Create reports directory if it doesn't exist
+        reports_dir = Path("reports")
+        reports_dir.mkdir(exist_ok=True)
+        
+        # Generate unique filename
+        filename = f"inspection_{inspection_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path = reports_dir / filename
+        
+        # Save the file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(pdf_file.file, buffer)
+        
+        pdf_path = str(file_path)
+    
+    # Update inspection with report data and status
+    inspection.report_findings = findings
+    inspection.report_recommendations = recommendations
+    if notes:
+        inspection.notes = notes
+    if pdf_path:
+        inspection.pdf_report_path = pdf_path
+    inspection.status = models.InspectionStatusEnum.pending_review
+    inspection.completion_date = date.today()
+    
+    try:
+        db.commit()
+        db.refresh(inspection)
+        
+        return {
+            "message": "Inspection report submitted successfully",
+            "inspection_id": inspection.id,
+            "status": inspection.status.value,
+            "pdf_path": pdf_path
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit inspection: {str(e)}"
+        )
+
+@router.get("/inspections/{inspection_id}/pdf")
+def get_inspection_pdf(
+    inspection_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Download PDF report for an inspection. Ensures a sample PDF exists if missing."""
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id
+    ).first()
+    if not inspection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inspection not found"
+        )
+    inspection = ensure_pdf_for_inspection(inspection)
+    db.commit()
+    if not inspection.pdf_report_path or not os.path.exists(inspection.pdf_report_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF report not found for this inspection"
+        )
+    return FileResponse(
+        path=inspection.pdf_report_path,
+        media_type="application/pdf",
+        filename=f"inspection_{inspection_id}_report.pdf"
+    )
+
+@router.get("/inspections/scheduled")
+def get_scheduled(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get scheduled inspections - role-based filtering"""
+    
+    # Role-based filtering
+    if current_user.role == models.RoleEnum.inspector:
+        # Inspectors see only their own in-progress/scheduled inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.inspector_id == current_user.id,
+            models.Inspection.status == models.InspectionStatusEnum.scheduled
+        ).order_by(
+            models.Inspection.scheduled_date.asc()
+        ).all()
+    else:
+        # Managers see all in-progress/scheduled inspections
+        inspections = db.query(models.Inspection).filter(
+            models.Inspection.status == models.InspectionStatusEnum.scheduled
+        ).order_by(
+            models.Inspection.scheduled_date.asc()
+        ).all()
+    
+    return [{
+        "id": insp.id,
+        "title": insp.title,
+        "location": insp.location,
+        "status": insp.status.value,
+        "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "notes": insp.notes,
+        "created_at": insp.created_at.isoformat()
+    } for insp in inspections]

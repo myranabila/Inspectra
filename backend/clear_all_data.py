@@ -6,8 +6,13 @@ import models
 
 def clear_all_data():
     db = SessionLocal()
-    
     try:
+        # Update manager username if needed
+        manager_user = db.query(models.User).filter(models.User.role == models.RoleEnum.manager).first()
+        if manager_user and manager_user.username != 'azhar':
+            print(f"\n🔄 Changing manager username from {manager_user.username} to azhar")
+            manager_user.username = 'azhar'
+            db.commit()
         # Count before delete
         inspections_count = db.query(models.Inspection).count()
         reports_count = db.query(models.Report).count()
@@ -36,7 +41,7 @@ def clear_all_data():
         users = db.query(models.User).all()
         print(f"\n👥 Existing Users (kept):")
         for user in users:
-            print(f"   - {user.username} ({user.role.value}): {user.full_name}")
+            print(f"   - {user.username} | Staff ID: {user.staff_id} | Role: {user.role.value} | Email: {user.email}")
         
     except Exception as e:
         print(f"❌ Error: {e}")

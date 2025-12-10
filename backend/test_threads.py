@@ -26,7 +26,7 @@ print(f"✓ Found {len(threads)} conversation threads")
 if threads:
     print("\n[3] Thread details:")
     for thread in threads[:3]:  # Show first 3
-        print(f"  - {thread['other_user_name']}: {thread['last_message_preview']}")
+        print(f"  - {thread['participant_name']}: {thread['last_message_preview']}")
         print(f"    Subject: {thread['subject']}")
         print(f"    Messages: {thread['message_count']}, Unread: {thread['unread_count']}")
         print(f"    Thread ID: {thread['thread_id']}\n")

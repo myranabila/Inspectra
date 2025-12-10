@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'services/dashboard_service.dart';
 import 'services/auth_service.dart';
 import 'manager_approvals_page.dart';
-import 'create_inspection_page.dart';
 import 'assign_task_page.dart';
-import 'my_tasks_page.dart';
-import 'messages_page.dart';
+import 'my_tasks_page_new.dart';
+import 'threads_list_page.dart';
 import 'reminders_page.dart';
+import 'inspections_list_page.dart';
+import 'inspector_management_page.dart';
+import 'inspector_profile_page.dart';
+import 'manager_user_management_page.dart';
 import 'theme/app_theme.dart';
+import 'widgets/time_filter.dart';
 
 class DashboardModule extends StatefulWidget {
   const DashboardModule({super.key});
@@ -24,6 +28,7 @@ class _DashboardModuleState extends State<DashboardModule> {
 
   Map<String, dynamic>? _statsData;
   List<dynamic> _recentInspections = [];
+  TimeFilterPeriod _selectedPeriod = TimeFilterPeriod.all;
 
   @override
   void initState() {
@@ -48,7 +53,8 @@ class _DashboardModuleState extends State<DashboardModule> {
     });
 
     try {
-      final stats = await DashboardService.getMonthlyStats();
+      final stats =
+          await DashboardService.getStats(period: _selectedPeriod.toShortString());
       final inspections = await DashboardService.getRecentInspections(limit: 5);
 
       setState(() {
@@ -71,69 +77,65 @@ class _DashboardModuleState extends State<DashboardModule> {
         ? [
             {
               "title": "Total Inspections",
-              "value": "${_statsData!['total_inspections'] ?? 0}",
-              "change": _statsData!['inspections_change'] ?? "0%",
+              "value": _statsData!['total_inspections']?.toString() ?? '0',
               "icon": Icons.assignment_turned_in,
               "color": Colors.blue,
-              "bg": Colors.blueAccent.withValues(alpha: 0.15),
             },
             {
               "title": "Reports Generated",
-              "value": "${_statsData!['total_reports'] ?? 0}",
-              "change": _statsData!['reports_change'] ?? "0%",
+              "value": _statsData!['reports_generated']?.toString() ?? '0',
               "icon": Icons.description,
               "color": Colors.green,
-              "bg": Colors.greenAccent.withValues(alpha: 0.15),
             },
             {
               "title": "Pending Review",
-              "value": "${_statsData!['pending_review'] ?? 0}",
-              "change": "+${_statsData!['pending_review_inspections'] ?? 0}",
+              "value": _statsData!['pending_review']?.toString() ?? '0',
               "icon": Icons.warning_amber_rounded,
               "color": Colors.orange,
-              "bg": Colors.orangeAccent.withValues(alpha: 0.15),
             },
             {
-              "title": "Completed This Month",
-              "value": "${_statsData!['completed_this_month'] ?? 0}",
-              "change": _statsData!['completed_change'] ?? "0%",
+              "title": "Completed",
+              "value": _statsData!['completed']?.toString() ?? '0',
               "icon": Icons.check_circle,
               "color": Colors.green,
-              "bg": Colors.greenAccent.withValues(alpha: 0.15),
+            },
+            {
+              "title": "Scheduled",
+              "value": _statsData!['scheduled']?.toString() ?? '0',
+              "icon": Icons.schedule,
+              "color": Colors.blue,
             },
           ]
         : [
             {
               "title": "Total Inspections",
               "value": "0",
-              "change": "0%",
               "icon": Icons.assignment_turned_in,
               "color": Colors.blue,
-              "bg": Colors.blueAccent.withValues(alpha: 0.15),
             },
             {
               "title": "Reports Generated",
               "value": "0",
-              "change": "0%",
               "icon": Icons.description,
               "color": Colors.green,
-              "bg": Colors.greenAccent.withValues(alpha: 0.15),
             },
             {
               "title": "Pending Review",
               "value": "0",
-              "change": "0",
               "icon": Icons.warning_amber_rounded,
               "color": Colors.orange,
-              "bg": Colors.orangeAccent.withValues(alpha: 0.15),
             },
             {
-              "title": "Completed This Month",
+              "title": "Completed",
               "value": "0",
-              "change": "0%",
               "icon": Icons.check_circle,
               "color": Colors.green,
-              "bg": Colors.greenAccent.withValues(alpha: 0.15),
+            },
+            {
+              "title": "Scheduled",
+              "value": "0",
+              "icon": Icons.schedule,
+              "color": Colors.blue,
             },
           ];
 
@@ -163,7 +165,7 @@ class _DashboardModuleState extends State<DashboardModule> {
                 const Icon(Icons.dashboard_rounded, size: 22),
                 const SizedBox(width: 8),
                 const Text(
-                  'Inspectra',
+                  'Inspection System',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
@@ -182,75 +184,19 @@ class _DashboardModuleState extends State<DashboardModule> {
             ),
           ],
         ),
-        backgroundColor: _userRole == 'manager'
-            ? AppTheme.managerPrimary
-            : AppTheme.inspectorPrimary,
+        backgroundColor: AppTheme.inspectorPrimary,
         foregroundColor: Colors.white,
-        actions: _userRole == 'manager'
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.assignment_ind),
-                  tooltip: 'Assign Task',
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AssignTaskPage(),
-                      ),
-                    );
-                    if (result == true) {
-                      _loadDashboardData();
-                    }
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.pending_actions),
-                  tooltip: 'Pending Approvals',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ManagerApprovalsPage(),
-                      ),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Logout',
-                  onPressed: () async {
-                    await AuthService.logout();
-                    if (!mounted) return;
-                    Navigator.pushReplacementNamed(context, '/login');
-                  },
-                ),
-              ]
-            : [
-                IconButton(
-                  icon: const Icon(Icons.add_task),
-                  tooltip: 'Create Inspection',
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const CreateInspectionPage(),
-                      ),
-                    );
-                    if (result == true) {
-                      _loadDashboardData(); // Refresh dashboard
-                    }
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Logout',
-                  onPressed: () async {
-                    await AuthService.logout();
-                    if (!mounted) return;
-                    Navigator.pushReplacementNamed(context, '/login');
-                  },
-                ),
-              ],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () async {
+              await AuthService.logout();
+              if (!mounted) return;
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+          ),
+        ],
       ),
       drawer: Drawer(
         child: ListView(
@@ -258,7 +204,7 @@ class _DashboardModuleState extends State<DashboardModule> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(
-                color: _userRole == 'manager' ? Colors.blue : Colors.green,
+                color: AppTheme.inspectorPrimary,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,9 +276,10 @@ class _DashboardModuleState extends State<DashboardModule> {
                 title: const Text('Inspector Management'),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Inspector Management coming soon'),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const InspectorManagementPage(),
                     ),
                   );
                 },
@@ -346,41 +293,16 @@ class _DashboardModuleState extends State<DashboardModule> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const MessagesPage(),
+                      builder: (context) => const ThreadsListPage(),
                     ),
                   );
                 },
               ),
             ] else ...[
+              // Inspector menu: Dashboard, Pending Task, History, Message, Reminder
               ListTile(
-                leading: const Icon(Icons.add_task),
-                title: const Text('Create Inspection'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const CreateInspectionPage(),
-                    ),
-                  );
-                  if (result == true) {
-                    _loadDashboardData(); // Refresh dashboard
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.description),
-                title: const Text('Submit Report'),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Submit Report coming soon')),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.assignment),
-                title: const Text('My Tasks'),
+                leading: const Icon(Icons.pending_actions),
+                title: const Text('Pending Task'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -392,32 +314,39 @@ class _DashboardModuleState extends State<DashboardModule> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('My Reports'),
+                leading: const Icon(Icons.history),
+                title: const Text('History'),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('My Reports coming soon')),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => InspectionsListPage(
+                        title: 'Inspection History',
+                        fetchFunction: () => DashboardService.getMyTasks(),
+                        headerColor: AppTheme.inspectorPrimary,
+                      ),
+                    ),
                   );
                 },
               ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.message),
-                title: const Text('Messages'),
+                title: const Text('Message'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const MessagesPage(),
+                      builder: (context) => const ThreadsListPage(),
                     ),
                   );
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.notifications),
-                title: const Text('Reminders'),
+                title: const Text('Reminder'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -429,6 +358,36 @@ class _DashboardModuleState extends State<DashboardModule> {
                 },
               ),
             ],
+            const Divider(),
+            // Profile Management
+            if (_userRole == 'manager') ...[
+              ListTile(
+                leading: const Icon(Icons.manage_accounts),
+                title: const Text('User Management'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ManagerUserManagementPage(),
+                    ),
+                  );
+                },
+              ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.account_circle),
+              title: const Text('My Profile'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const InspectorProfilePage(),
+                  ),
+                );
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -474,97 +433,177 @@ class _DashboardModuleState extends State<DashboardModule> {
             )
           : RefreshIndicator(
               onRefresh: _loadDashboardData,
-              color: _userRole == 'manager'
-                  ? AppTheme.managerPrimary
-                  : AppTheme.inspectorPrimary,
+              color: AppTheme.inspectorPrimary,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    TimeFilter(
+                      selectedPeriod: _selectedPeriod,
+                      onPeriodSelected: (period) {
+                        setState(() {
+                          _selectedPeriod = period;
+                        });
+                        _loadDashboardData();
+                      },
+                    ),
+                    const SizedBox(height: 24),
                     AppTheme.sectionHeader(
                       'Dashboard Overview',
-                      _userRole == 'manager'
-                          ? AppTheme.managerPrimary
-                          : AppTheme.inspectorPrimary,
+                      AppTheme.inspectorPrimary,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       "Welcome back! Here's a summary of your activities.",
                       style: AppTheme.bodyMedium,
                     ),
+                    if (_selectedPeriod != TimeFilterPeriod.all)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          'Showing data for this ${_selectedPeriod.toShortString()}',
+                          style: const TextStyle(
+                              color: AppTheme.inspectorPrimary,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     const SizedBox(height: 24),
 
                     // Stats Grid
                     GridView.count(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: MediaQuery.of(context).size.width > 900
-                          ? 4
+                      crossAxisCount: MediaQuery.of(context).size.width > 1200
+                          ? 5
+                          : MediaQuery.of(context).size.width > 600
+                          ? 3
                           : 2,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
+                      childAspectRatio: 1.3,
                       children: stats.map((stat) {
                         return Card(
                           elevation: 1,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      stat["title"].toString(),
-                                      style: const TextStyle(
-                                        fontSize: 13,
+                          child: InkWell(
+                            onTap: () {
+                              // Navigate to dedicated page with appropriate filter
+                              final title = stat["title"].toString();
+                              
+                              if (title == "Total Inspections") {
+                                // Show all inspections
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InspectionsListPage(
+                                      title: 'Total Inspections',
+                                      fetchFunction: DashboardService.getAllInspections,
+                                      headerColor: AppTheme.inspectorPrimary,
+                                    ),
+                                  ),
+                                );
+                              } else if (title == "Reports Generated") {
+                                // Show completed inspections
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InspectionsListPage(
+                                      title: 'Reports Generated',
+                                      fetchFunction: DashboardService.getCompletedInspections,
+                                      headerColor: Colors.green,
+                                    ),
+                                  ),
+                                );
+                              } else if (title == "Pending Review") {
+                                // Show pending review inspections
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InspectionsListPage(
+                                      title: 'Pending Review',
+                                      fetchFunction: DashboardService.getPendingReviewInspections,
+                                      headerColor: Colors.orange,
+                                    ),
+                                  ),
+                                );
+                              } else if (title == "Completed") {
+                                // Show completed in period
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InspectionsListPage(
+                                      title: 'Completed Inspections',
+                                      fetchFunction: DashboardService.getCompletedInspections,
+                                      headerColor: Colors.green,
+                                    ),
+                                  ),
+                                );
+                              } else if (title == "Scheduled") {
+                                // Show scheduled tasks
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InspectionsListPage(
+                                      title: 'Scheduled Inspections',
+                                      fetchFunction: DashboardService.getInProgressScheduled,
+                                      headerColor: Colors.purple,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          stat["title"].toString(),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.chevron_right,
+                                        size: 16,
                                         color: Colors.grey,
                                       ),
-                                    ),
-                                    Container(
-                                      height: 40,
-                                      width: 40,
-                                      decoration: BoxDecoration(
-                                        color: stat["bg"] as Color,
-                                        shape: BoxShape.circle,
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        height: 40,
+                                        width: 40,
+                                        decoration: BoxDecoration(
+                                          color: (stat["color"] as Color)
+                                              .withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          stat["icon"] as IconData,
+                                          size: 20,
+                                          color: stat["color"] as Color,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        stat["icon"] as IconData,
-                                        size: 20,
-                                        color: stat["color"] as Color,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  stat["value"].toString(),
-                                  style: const TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold,
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.trending_up,
-                                      size: 14,
-                                      color: Colors.green,
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    stat["value"].toString(),
+                                    style: const TextStyle(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "${stat["change"]} from last month",
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.green,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -643,8 +682,8 @@ class _DashboardModuleState extends State<DashboardModule> {
                                       ..._recentInspections.map((item) {
                                         final statusColors = {
                                           'scheduled': Colors.blue,
-                                          'in_progress': Colors.orange,
-                                          'pending_review': Colors.amber,
+                                          'pending_review': Colors.purple,
+                                          'rejected': Colors.red,
                                           'completed': Colors.green,
                                         };
                                         final status =
@@ -734,8 +773,8 @@ class _DashboardModuleState extends State<DashboardModule> {
                                               LinearProgressIndicator(
                                                 value: status == 'completed'
                                                     ? 1.0
-                                                    : status == 'in_progress'
-                                                    ? 0.5
+                                                    : status == 'pending_review'
+                                                    ? 0.7
                                                     : 0.1,
                                                 backgroundColor:
                                                     Colors.grey.shade200,

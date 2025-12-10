@@ -10,6 +10,8 @@ class ManagerService {
     required int inspectorId,
     required String title,
     required String location,
+    String? equipmentId,
+    String? equipmentType,
     String? scheduledDate,
     String? notes,
   }) async {
@@ -21,6 +23,8 @@ class ManagerService {
           'inspector_id': inspectorId,
           'title': title,
           'location': location,
+          'equipment_id': equipmentId,
+          'equipment_type': equipmentType,
           'scheduled_date': scheduledDate,
           'notes': notes,
         },
@@ -83,17 +87,18 @@ class ManagerService {
     }
   }
 
-  // Approve or reject inspection
+  // Approve inspection
   static Future<Map<String, dynamic>> approveInspection(
-    int inspectionId,
-    String action, {
+    int inspectionId, {
     String? notes,
   }) async {
     try {
       final token = await AuthService.getToken();
       final response = await ApiService.post(
-        url: '$baseUrl/approve/inspection',
-        body: {'inspection_id': inspectionId, 'action': action, 'notes': notes},
+        url: '$baseUrl/approve/inspection?inspection_id=$inspectionId',
+        body: {
+          'notes': notes,
+        },
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -101,7 +106,32 @@ class ManagerService {
       );
       return response;
     } catch (e) {
-      throw Exception('Failed to $action inspection: $e');
+      throw Exception('Failed to approve inspection: $e');
+    }
+  }
+
+  // Reject inspection with detailed reason
+  static Future<Map<String, dynamic>> rejectInspection(
+    int inspectionId,
+    String rejectionReason, {
+    String? feedback,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await ApiService.post(
+        url: '$baseUrl/reject/inspection?inspection_id=$inspectionId',
+        body: {
+          'rejection_reason': rejectionReason,
+          'rejection_feedback': feedback,
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return response;
+    } catch (e) {
+      throw Exception('Failed to reject inspection: $e');
     }
   }
 

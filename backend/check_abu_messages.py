@@ -17,12 +17,21 @@ if login_response.status_code != 200:
     exit(1)
 
 token = login_response.json()["access_token"]
-user_info = login_response.json().get("user", {})
-print(f"✓ Logged in as: {user_info.get('full_name', 'abu')}")
+headers = {"Authorization": f"Bearer {token}"}
+
+# Get user info from /profile/me
+me_response = requests.get(
+    f"{BASE_URL}/profile/me",
+    headers=headers
+)
+if me_response.status_code != 200:
+    print(f"❌ Failed to get user info: {me_response.text}")
+    exit(1)
+
+user_info = me_response.json()
+print(f"✓ Logged in as: {user_info.get('username', 'abu')}")
 print(f"  User ID: {user_info.get('id')}")
 print(f"  Role: {user_info.get('role')}")
-
-headers = {"Authorization": f"Bearer {token}"}
 
 # Get all messages for abu
 print("\nFetching messages for abu...")

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/manager_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/location_dropdown.dart';
 
 class AssignTaskPage extends StatefulWidget {
   const AssignTaskPage({super.key});
@@ -13,6 +14,8 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _locationController = TextEditingController();
+  final _equipmentIdController = TextEditingController();
+  final _equipmentTypeController = TextEditingController();
   final _notesController = TextEditingController();
 
   List<dynamic> _inspectors = [];
@@ -32,6 +35,8 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   void dispose() {
     _titleController.dispose();
     _locationController.dispose();
+    _equipmentIdController.dispose();
+    _equipmentTypeController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -102,6 +107,12 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
         inspectorId: _selectedInspectorId!,
         title: _titleController.text.trim(),
         location: _locationController.text.trim(),
+        equipmentId: _equipmentIdController.text.trim().isNotEmpty
+            ? _equipmentIdController.text.trim()
+            : null,
+        equipmentType: _equipmentTypeController.text.trim().isNotEmpty
+            ? _equipmentTypeController.text.trim()
+            : null,
         scheduledDate: scheduledDateStr,
         notes: _notesController.text.trim().isNotEmpty
             ? _notesController.text.trim()
@@ -112,7 +123,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
 
       final inspectorName = _inspectors.firstWhere(
         (i) => i['id'] == _selectedInspectorId,
-      )['full_name'];
+      )['username'];
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -310,7 +321,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              inspector['full_name'] ?? 'N/A',
+                                              inspector['username'] ?? 'N/A',
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 16,
@@ -384,21 +395,41 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Location Field
-                    TextFormField(
+                    // Location Field with Dropdown
+                    LocationDropdown(
                       controller: _locationController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location *',
-                        hintText: 'e.g., Building A - Floor 3',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.location_on),
-                      ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter location';
                         }
                         return null;
                       },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Equipment ID Field
+                    TextFormField(
+                      controller: _equipmentIdController,
+                      decoration: const InputDecoration(
+                        labelText: 'Equipment ID / Tag Number',
+                        hintText: 'e.g., PV-101, TK-205',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.tag),
+                        helperText: 'Enter equipment identification number',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Equipment Type Field
+                    TextFormField(
+                      controller: _equipmentTypeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Equipment Type',
+                        hintText: 'e.g., Pressure Vessel, Storage Tank',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.category),
+                        helperText: 'Specify the type of equipment',
+                      ),
                     ),
                     const SizedBox(height: 16),
 

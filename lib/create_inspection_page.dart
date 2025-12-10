@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import 'widgets/location_dropdown.dart';
 
 class CreateInspectionPage extends StatefulWidget {
   const CreateInspectionPage({super.key});
@@ -222,15 +223,9 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Location Field
-                    TextFormField(
+                    // Location Field with Dropdown
+                    LocationDropdown(
                       controller: _locationController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location *',
-                        hintText: 'e.g., Building A - Floor 3',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.location_on),
-                      ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter location';

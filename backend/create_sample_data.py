@@ -63,17 +63,16 @@ def create_sample_data():
         ph = PasswordHasher()
         
         default_users_data = [
-            ('manager', 'System Manager', 'manager@inspectra.com', models.RoleEnum.manager),
-            ('adam', 'adam khasim', 'adam@inspectra.com', models.RoleEnum.inspector),
-            ('ali', 'ali abu', 'ali@inspectra.com', models.RoleEnum.inspector),
-            ('abu', 'abuabu', 'abu@inspectra.com', models.RoleEnum.inspector),
+            ('manager', 'manager@inspectra.com', models.RoleEnum.manager),
+            ('adam', 'adam@inspectra.com', models.RoleEnum.inspector),
+            ('ali', 'ali@inspectra.com', models.RoleEnum.inspector),
+            ('abu', 'abu@inspectra.com', models.RoleEnum.inspector),
         ]
         
-        for username, full_name, email, role in default_users_data:
+        for username, email, role in default_users_data:
             user = models.User(
                 username=username,
                 password_hash=ph.hash(f'{username}123'),  # password is username123
-                full_name=full_name,
                 email=email,
                 role=role,
                 phone=f'012345{random.randint(1000, 9999)}'
@@ -111,8 +110,8 @@ def create_sample_data():
             if month_offset == 0:  # Current month
                 status_choices = [
                     models.InspectionStatusEnum.scheduled,
-                    models.InspectionStatusEnum.in_progress,
                     models.InspectionStatusEnum.pending_review,
+                    models.InspectionStatusEnum.rejected,
                     models.InspectionStatusEnum.completed
                 ]
                 status = random.choice(status_choices)
@@ -188,8 +187,8 @@ def create_sample_data():
     scheduled = db.query(models.Inspection).filter(
         models.Inspection.status == models.InspectionStatusEnum.scheduled
     ).count()
-    in_progress = db.query(models.Inspection).filter(
-        models.Inspection.status == models.InspectionStatusEnum.in_progress
+    rejected = db.query(models.Inspection).filter(
+        models.Inspection.status == models.InspectionStatusEnum.rejected
     ).count()
     pending_review_insp = db.query(models.Inspection).filter(
         models.Inspection.status == models.InspectionStatusEnum.pending_review
@@ -221,8 +220,8 @@ def create_sample_data():
     
     print(f"Total Inspections: {total_inspections}")
     print(f"  - Scheduled: {scheduled}")
-    print(f"  - In Progress: {in_progress}")
     print(f"  - Pending Review: {pending_review_insp}")
+    print(f"  - Rejected: {rejected}")
     print(f"  - Completed: {completed}")
     print(f"\nTotal Reports: {total_reports}")
     print(f"  - Pending Review: {pending_review_reports}")

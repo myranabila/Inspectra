@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'services/messaging_service.dart';
 import 'theme/app_theme.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 class ConversationPage extends StatefulWidget {
-  final String threadId;
+  final int? threadId;
   final String otherUserName;
   final int otherUserId;
   final String subject;
 
   const ConversationPage({
     super.key,
-    required this.threadId,
+    this.threadId,
     required this.otherUserName,
     required this.otherUserId,
     required this.subject,
@@ -18,14 +19,16 @@ class ConversationPage extends StatefulWidget {
 
   @override
   State<ConversationPage> createState() => _ConversationPageState();
+
+
+
 }
 
 class _ConversationPageState extends State<ConversationPage> {
+    PlatformFile? _selectedFile;
   List<dynamic> _messages = [];
   bool _isLoading = true;
-  String? _error;
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _controller = TextEditingController();
 
   @override
   void initState() {
@@ -33,70 +36,85 @@ class _ConversationPageState extends State<ConversationPage> {
     _loadMessages();
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  Future<void> _loadMessages() async {
+    setState(() => _isLoading = true);
+    // TODO: Replace with real API call for conversation messages
+    // For now, mock messages for demonstration
+    await Future.delayed(const Duration(milliseconds: 300));
+    setState(() {
+      _messages = [
+        {
+          'id': 1,
+          'sender_id': widget.otherUserId,
+          'sender_name': widget.otherUserName,
+          'content': 'Hello! This is the start of our chat.',
+          'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
+          'is_sender': false,
+        },
+        {
+          'id': 2,
+          'sender_id': 0,
+          'sender_name': 'Me',
+          'content': 'Hi! Ready to discuss?',
+          'created_at': DateTime.now().toIso8601String(),
+          'is_sender': true,
+        },
+      ];
+      _isLoading = false;
+    });
   }
 
-  Future<void> _loadMessages() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final messages = await MessagingService.getThreadMessages(widget.threadId);
-      setState(() {
-        _messages = messages;
-        _isLoading = false;
-      });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
+  List<dynamic> _groupMessagesByDate(List<dynamic> messages) {
+    final List<dynamic> grouped = [];
+    String? lastDateLabel;
+    final now = DateTime.now();
+    for (final msg in messages) {
+      final createdAt = DateTime.tryParse(msg['created_at'] ?? '') ?? now;
+      String dateLabel;
+      if (createdAt.year == now.year && createdAt.month == now.month && createdAt.day == now.day) {
+        dateLabel = 'Today';
+      } else {
+        dateLabel = "${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}";
+      }
+      if (dateLabel != lastDateLabel) {
+        grouped.add({'_dateLabel': dateLabel});
+        lastDateLabel = dateLabel;
+      }
+      grouped.add(msg);
     }
+    return grouped;
   }
 
   Future<void> _sendMessage() async {
-    final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    final text = _controller.text.trim();
+    if (text.isEmpty && _selectedFile == null) return;
+    setState(() => _isLoading = true);
+    // TODO: Replace with real sendMessage API call (with file upload)
+    await Future.delayed(const Duration(milliseconds: 300));
+    setState(() {
+      _messages.add({
+        'id': _messages.length + 1,
+        'sender_id': 0,
+        'sender_name': 'Me',
+        'content': text,
+        'created_at': DateTime.now().toIso8601String(),
+        'is_sender': true,
+        'attachment_url': _selectedFile != null ? _selectedFile!.path : null,
+        'attachment_type': _selectedFile != null && _selectedFile!.extension != null && ['jpg','jpeg','png','gif'].contains(_selectedFile!.extension!.toLowerCase()) ? 'image' : 'file',
+        'attachment_name': _selectedFile?.name,
+      });
+      _isLoading = false;
+      _controller.clear();
+      _selectedFile = null;
+    });
+  }
 
-    _messageController.clear();
-
-    try {
-      await MessagingService.sendMessageInThread(
-        receiverId: widget.otherUserId,
-        content: content,
-      );
-
-      await _loadMessages();
-
-      if (!mounted) return;
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      _messageController.text = content;
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(withData: false);
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        _selectedFile = result.files.first;
+      });
     }
   }
 
@@ -104,163 +122,153 @@ class _ConversationPageState extends State<ConversationPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.otherUserName, style: const TextStyle(fontSize: 18)),
-            Text(widget.subject, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMessages,
-            tooltip: 'Refresh',
-          ),
-        ],
+        title: Text(widget.otherUserName),
+        backgroundColor: AppTheme.managerPrimary,
       ),
       body: Column(
         children: [
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
-                            const SizedBox(height: 16),
-                            Text('Error: $_error', style: AppTheme.bodyMedium),
-                            ElevatedButton.icon(
-                              onPressed: _loadMessages,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _messages.isEmpty
-                        ? const Center(child: Text('No messages yet'))
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, index) {
-                              final message = _messages[index];
-                              final isSender = message['is_sender'] == true;
-                              final time = _formatTime(message['created_at']);
-
-                              return Align(
-                                alignment: isSender ? Alignment.centerRight : Alignment.centerLeft,
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  constraints: BoxConstraints(
-                                    maxWidth: MediaQuery.of(context).size.width * 0.7,
+                : ListView.builder(
+                    reverse: false,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _groupMessagesByDate(_messages).length,
+                    itemBuilder: (context, index) {
+                      final item = _groupMessagesByDate(_messages)[index];
+                      if (item is Map && item.containsKey('_dateLabel')) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            children: [
+                              Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text(
+                                  item['_dateLabel'],
+                                  style: TextStyle(
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment: isSender ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                ),
+                              ),
+                              Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
+                            ],
+                          ),
+                        );
+                      }
+                      final msg = item;
+                      final isMe = msg['is_sender'] == true;
+                      return Align(
+                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isMe ? Colors.green.shade100 : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (msg['attachment_url'] != null && msg['attachment_type'] == 'image')
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Image.file(
+                                    File(msg['attachment_url']),
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              if (msg['attachment_url'] != null && msg['attachment_type'] == 'file')
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Row(
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: isSender ? AppTheme.managerPrimary : Colors.grey.shade200,
-                                          borderRadius: BorderRadius.only(
-                                            topLeft: const Radius.circular(16),
-                                            topRight: const Radius.circular(16),
-                                            bottomLeft: isSender ? const Radius.circular(16) : const Radius.circular(4),
-                                            bottomRight: isSender ? const Radius.circular(4) : const Radius.circular(16),
-                                          ),
-                                        ),
+                                      const Icon(Icons.insert_drive_file, size: 20),
+                                      const SizedBox(width: 6),
+                                      Expanded(
                                         child: Text(
-                                          message['content'],
-                                          style: TextStyle(
-                                            color: isSender ? Colors.white : Colors.black87,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                                        child: Text(
-                                          time,
-                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                          msg['attachment_name'] ?? 'File',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              );
-                            },
+                              if ((msg['content'] ?? '').isNotEmpty)
+                                Text(msg['content'] ?? '', style: const TextStyle(fontSize: 15)),
+                            ],
                           ),
+                        ),
+                      );
+                    },
+                  ),
           ),
           Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file, color: Colors.blueGrey),
+                  onPressed: _pickFile,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _controller,
+                        decoration: const InputDecoration(
+                          hintText: 'Type a message...',
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                      if (_selectedFile != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              if (_selectedFile!.extension != null && ['jpg','jpeg','png','gif'].contains(_selectedFile!.extension!.toLowerCase()))
+                                Image.file(
+                                  File(_selectedFile!.path!),
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                )
+                              else
+                                const Icon(Icons.insert_drive_file, size: 32),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _selectedFile!.name,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: () => setState(() => _selectedFile = null),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.green),
+                  onPressed: _sendMessage,
                 ),
               ],
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      ),
-                      maxLines: null,
-                      textCapitalization: TextCapitalization.sentences,
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: AppTheme.managerPrimary,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: _sendMessage,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  String _formatTime(String isoTime) {
-    try {
-      final dateTime = DateTime.parse(isoTime);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
-
-      if (messageDate == today) {
-        return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-      } else if (messageDate == today.subtract(const Duration(days: 1))) {
-        return 'Yesterday ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-      } else {
-        return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-      }
-    } catch (e) {
-      return '';
-    }
   }
 }

@@ -25,9 +25,9 @@ adam_headers = {"Authorization": f"Bearer {adam_token}"}
 print("✓ Adam logged in")
 
 # Step 2: Get adam's user info
-adam_me = requests.get(f"{BASE_URL}/auth/me", headers=adam_headers)
+adam_me = requests.get(f"{BASE_URL}/profile/me", headers=adam_headers)
 adam_info = adam_me.json()
-print(f"  Adam ID: {adam_info['id']}, Name: {adam_info['full_name']}")
+print(f"  Adam ID: {adam_info['id']}, Username: {adam_info['username']}")
 
 # Step 3: Get list of users to find abu's ID
 print("\n[2] Getting list of users...")
@@ -49,7 +49,7 @@ if not abu:
     print("❌ Abu not found in users list!")
     exit(1)
 
-print(f"  Abu ID: {abu['id']}, Name: {abu['full_name']}")
+print(f"  Abu ID: {abu['id']}, Username: {abu['username']}")
 
 # Step 4: Send message from adam to abu
 print(f"\n[3] Sending message from adam (ID {adam_info['id']}) to abu (ID {abu['id']})...")
@@ -96,9 +96,9 @@ abu_headers = {"Authorization": f"Bearer {abu_token}"}
 print("✓ Abu logged in")
 
 # Get abu's info
-abu_me = requests.get(f"{BASE_URL}/auth/me", headers=abu_headers)
+abu_me = requests.get(f"{BASE_URL}/profile/me", headers=abu_headers)
 abu_info = abu_me.json()
-print(f"  Abu ID: {abu_info['id']}, Name: {abu_info['full_name']}")
+print(f"  Abu ID: {abu_info['id']}, Username: {abu_info['username']}")
 
 # Step 6: Get abu's messages
 print(f"\n[5] Getting abu's messages...")

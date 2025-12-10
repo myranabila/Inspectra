@@ -41,7 +41,7 @@ def test_login_and_message():
     users = users_response.json()
     print(f"✓ Found {len(users)} users:")
     for user in users:
-        print(f"  - ID: {user['id']}, Name: {user['full_name']}, Role: {user['role']}")
+        print(f"  - ID: {user['id']}, Username: {user['username']}, Role: {user['role']}")
     
     if not users:
         print("❌ No users found!")
@@ -49,7 +49,7 @@ def test_login_and_message():
     
     # Step 3: Send message to first user
     receiver = users[0]
-    print(f"\n3. Sending message to {receiver['full_name']}...")
+    print(f"\n3. Sending message to {receiver['username']}...")
     
     message_data = {
         "receiver_id": receiver['id'],

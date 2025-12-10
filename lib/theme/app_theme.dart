@@ -141,9 +141,6 @@ class AppTheme {
       case 'scheduled':
         color = statusScheduled;
         break;
-      case 'in_progress':
-        color = statusInProgress;
-        break;
       case 'pending_review':
         color = statusPendingReview;
         break;
@@ -157,6 +154,15 @@ class AppTheme {
         color = Colors.grey;
     }
 
+    String displayText = status;
+    if (status == 'rejected') {
+      displayText = 'REJECTED';
+    } else if (status == 'pending_review') {
+      displayText = 'UNDER REVIEW';
+    } else {
+      displayText = status.replaceAll('_', ' ').toUpperCase();
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -165,7 +171,7 @@ class AppTheme {
         border: Border.all(color: color, width: 1.5),
       ),
       child: Text(
-        status.replaceAll('_', ' ').toUpperCase(),
+        displayText,
         style: TextStyle(
           color: color,
           fontSize: 11,
@@ -192,5 +198,21 @@ class AppTheme {
         Text(title, style: headingLarge),
       ],
     );
+  }
+
+  // Get Status Color Helper
+  static Color getStatusColor(String status) {
+    switch (status) {
+      case 'scheduled':
+        return statusScheduled;
+      case 'pending_review':
+        return statusPendingReview;
+      case 'rejected':
+        return statusRejected;
+      case 'completed':
+        return statusCompleted;
+      default:
+        return Colors.grey;
+    }
   }
 }

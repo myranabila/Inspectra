@@ -39,7 +39,6 @@ try:
         existing_users.append({
             'username': user.username,
             'password_hash': user.password_hash,
-            'full_name': user.full_name,
             'email': user.email,
             'role': user.role,
             'phone': user.phone
@@ -79,7 +78,6 @@ try:
             new_user = models.User(
                 username=user_data['username'],
                 password_hash=user_data['password_hash'],
-                full_name=user_data['full_name'],
                 email=user_data['email'],
                 role=user_data['role'],
                 phone=user_data['phone']
@@ -102,7 +100,6 @@ try:
             {
                 'username': 'manager',
                 'password_hash': ph.hash('manager123'),
-                'full_name': 'System Manager',
                 'email': 'manager@inspectra.com',
                 'role': models.RoleEnum.manager,
                 'phone': '0123456789'
@@ -110,7 +107,6 @@ try:
             {
                 'username': 'adam',
                 'password_hash': ph.hash('adam123'),
-                'full_name': 'adam khasim',
                 'email': 'adam@inspectra.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456780'
@@ -118,7 +114,6 @@ try:
             {
                 'username': 'ali',
                 'password_hash': ph.hash('ali123'),
-                'full_name': 'ali abu',
                 'email': 'ali@inspectra.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456781'
@@ -126,7 +121,6 @@ try:
             {
                 'username': 'abu',
                 'password_hash': ph.hash('abu123'),
-                'full_name': 'abuabu',
                 'email': 'abu@inspectra.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456782'
@@ -242,8 +236,8 @@ try:
         db.refresh(test_message)
         
         print(f"✓ Test message created (ID: {test_message.id})")
-        print(f"  From: {sender.full_name} ({sender.username})")
-        print(f"  To: {receiver.full_name} ({receiver.username})")
+        print(f"  From: {sender.username}")
+        print(f"  To: {receiver.username}")
         
         # Verify we can read it back
         msg = db.query(models.Message).filter(

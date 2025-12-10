@@ -11,6 +11,27 @@ class MessagesPage extends StatefulWidget {
 
 class _MessagesPageState extends State<MessagesPage> {
   List<dynamic> _messages = [];
+
+  List<dynamic> _groupMessagesByDate(List<dynamic> messages) {
+    final List<dynamic> grouped = [];
+    String? lastDateLabel;
+    final now = DateTime.now();
+    for (final msg in messages) {
+      final createdAt = DateTime.tryParse(msg['created_at'] ?? '') ?? now;
+      String dateLabel;
+      if (createdAt.year == now.year && createdAt.month == now.month && createdAt.day == now.day) {
+        dateLabel = 'Today';
+      } else {
+        dateLabel = "${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}";
+      }
+      if (dateLabel != lastDateLabel) {
+        grouped.add({'_dateLabel': dateLabel});
+        lastDateLabel = dateLabel;
+      }
+      grouped.add(msg);
+    }
+    return grouped;
+  }
   bool _isLoading = true;
   String? _error;
 
@@ -545,12 +566,37 @@ class _MessagesPageState extends State<MessagesPage> {
               color: AppTheme.managerPrimary,
               child: ListView.builder(
                 padding: const EdgeInsets.all(20),
-                itemCount: _messages.length,
+                itemCount: _groupMessagesByDate(_messages).length,
                 itemBuilder: (context, index) {
-                  final message = _messages[index];
+                  final item = _groupMessagesByDate(_messages)[index];
+                  if (item is Map && item.containsKey('_dateLabel')) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Divider(thickness: 1, color: Colors.grey.shade300),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              item['_dateLabel'],
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Divider(thickness: 1, color: Colors.grey.shade300),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  final message = item;
                   final isUnread =
                       !message['is_sender'] && message['status'] == 'unread';
-
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(

@@ -22,8 +22,8 @@ else:
         receiver = db.query(models.User).filter(models.User.id == msg.receiver_id).first()
         
         print(f"Message ID: {msg.id}")
-        print(f"  From: {sender.full_name if sender else 'Unknown'} (ID: {msg.sender_id})")
-        print(f"  To: {receiver.full_name if receiver else 'Unknown'} (ID: {msg.receiver_id})")
+        print(f"  From: {sender.username if sender else 'Unknown'} (ID: {msg.sender_id})")
+        print(f"  To: {receiver.username if receiver else 'Unknown'} (ID: {msg.receiver_id})")
         print(f"  Subject: {msg.subject or '(No subject)'}")
         print(f"  Content: {msg.content[:50]}...")
         print(f"  Status: {msg.status}")
@@ -41,6 +41,6 @@ db = SessionLocal()
 users = db.query(models.User).all()
 
 for user in users:
-    print(f"ID: {user.id}, Username: {user.username}, Name: {user.full_name}, Role: {user.role}")
+    print(f"ID: {user.id}, Username: {user.username}, Role: {user.role.value}")
 
 db.close()

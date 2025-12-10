@@ -22,13 +22,11 @@ class TokenData(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
-    full_name: Optional[str] = None
     email: Optional[EmailStr] = None
 
 class UserOut(BaseModel):
     id: int
     username: str
-    full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: RoleEnum
     phone: Optional[str] = None

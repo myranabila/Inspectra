@@ -9,8 +9,8 @@ class RoleEnum(str, enum.Enum):
 
 class InspectionStatusEnum(str, enum.Enum):
     scheduled = "scheduled"
-    in_progress = "in_progress"
     pending_review = "pending_review"
+    rejected = "rejected"
     completed = "completed"
 
 class ReportStatusEnum(str, enum.Enum):
@@ -27,16 +27,30 @@ class ReminderStatusEnum(str, enum.Enum):
     sent = "sent"
     dismissed = "dismissed"
 
+class Location(Base):
+    __tablename__ = "locations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), unique=True, nullable=False, index=True)
+    description = Column(String(500), nullable=True)
+    is_active = Column(Integer, default=1, nullable=False)  # 1 = active, 0 = inactive
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(80), unique=True, nullable=False, index=True)
+    staff_id = Column(String(20), unique=True, nullable=False, index=True)  # Auto-generated unique ID for login
     password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(150))
     email = Column(String(150))
     role = Column(Enum(RoleEnum), default=RoleEnum.inspector, nullable=False)
     phone = Column(String(30), nullable=True)
+    profile_picture = Column(String(500), nullable=True)  # URL or path to profile picture
+    years_experience = Column(Integer, nullable=True)  # For inspectors
+    is_active = Column(Integer, default=1, nullable=False)  # 1 = active, 0 = deactivated
     created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    last_password_change = Column(TIMESTAMP, nullable=True)
     
     # Relationships
     inspections = relationship("Inspection", back_populates="inspector")
@@ -50,11 +64,25 @@ class Inspection(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     location = Column(String(200))
+    equipment_id = Column(String(100), nullable=True)  # Equipment Tag Number
+    equipment_type = Column(String(200), nullable=True)  # Equipment Type/Description
     status = Column(Enum(InspectionStatusEnum), default=InspectionStatusEnum.scheduled, nullable=False)
     scheduled_date = Column(Date, nullable=True)
     completion_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
     inspector_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    
+    # Report fields
+    pdf_report_path = Column(String(500), nullable=True)
+    report_findings = Column(Text, nullable=True)
+    report_recommendations = Column(Text, nullable=True)
+    
+    # Rejection fields
+    rejection_reason = Column(String(500), nullable=True)
+    rejection_feedback = Column(Text, nullable=True)
+    rejection_count = Column(Integer, default=0, nullable=False)
+    last_rejected_at = Column(TIMESTAMP, nullable=True)
+    
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     
@@ -91,6 +119,9 @@ class Message(Base):
     reply_to_id = Column(Integer, ForeignKey('messages.id'), nullable=True)  # For threading
     subject = Column(String(200), nullable=True)
     content = Column(Text, nullable=False)
+    attachment_url = Column(String(500), nullable=True)  # URL/path to file or photo
+    attachment_type = Column(String(50), nullable=True)  # e.g. 'image', 'pdf', 'doc', etc.
+    attachment_name = Column(String(255), nullable=True) # Original filename
     status = Column(Enum(MessageStatusEnum), default=MessageStatusEnum.unread, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     read_at = Column(TIMESTAMP, nullable=True)

@@ -21,26 +21,6 @@ class AuthService {
     return response;
   }
 
-  // Register method
-  static Future<Map<String, dynamic>> register({
-    required String username,
-    required String password,
-    required String fullName,
-    required String email,
-  }) async {
-    final response = await ApiService.post(
-      url: ApiConfig.registerUrl,
-      body: {
-        'username': username,
-        'password': password,
-        'full_name': fullName,
-        'email': email,
-      },
-    );
-
-    return response;
-  }
-
   // Get current user profile
   static Future<Map<String, dynamic>> getCurrentUser() async {
     final token = await getToken();
@@ -48,8 +28,8 @@ class AuthService {
       throw Exception('No authentication token found');
     }
 
-    final response = await ApiService.get(
-      url: '${ApiConfig.baseUrl}/auth/me',
+    final response = await ApiService.get( // Should point to /profile/me
+      url: '${ApiConfig.baseUrl}/profile/me',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -69,10 +49,23 @@ class AuthService {
       final user = await getCurrentUser();
       if (user['role'] != null) {
         await prefs.setString('user_role', user['role']);
-        await prefs.setString('user_name', user['full_name'] ?? '');
+        await prefs.setString('user_name', user['username']);
       }
     } catch (e) {
       // Failed to fetch user role
+    }
+  }
+
+  /// Fetches the current user's data and updates local storage.
+  /// This is useful for refreshing the UI after a profile update.
+  static Future<void> refreshUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final user = await getCurrentUser();
+      await prefs.setString('user_role', user['role']);
+      await prefs.setString('user_name', user['username']);
+    } catch (e) {
+      print("Failed to refresh user data: $e");
     }
   }
 

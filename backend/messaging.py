@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import Integer, func, or_, and_
 from datetime import datetime
 import models
 from db import get_db
@@ -23,95 +24,97 @@ class CreateReminderRequest(BaseModel):
     message: Optional[str] = None
     remind_at: str  # ISO datetime string
 
+from fastapi import UploadFile, File, Form
+import os
+from pathlib import Path
+import shutil
+
 # Send message
 @router.post("/send")
-def send_message(
-    request: SendMessageRequest,
+async def send_message(
+    receiver_id: int = Form(...),
+    content: str = Form(...),
+    subject: str = Form(None),
+    inspection_id: int = Form(None),
+    reply_to_id: int = Form(None),
+    attachment: UploadFile = File(None),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Send a message about an inspection or general work message"""
-    
+    """Send a message with optional file/photo attachment"""
     try:
-        print(f"[MESSAGING] Sending message from user {current_user.id} to {request.receiver_id}")
-        print(f"[MESSAGING] Request: inspection_id={request.inspection_id}, subject={request.subject}")
-        
         # Verify inspection exists if provided
-        if request.inspection_id:
+        if inspection_id:
             inspection = db.query(models.Inspection).filter(
-                models.Inspection.id == request.inspection_id
+                models.Inspection.id == inspection_id
             ).first()
-            
             if not inspection:
-                print(f"[MESSAGING ERROR] Inspection {request.inspection_id} not found")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Inspection not found"
-                )
-        
+                raise HTTPException(status_code=404, detail="Inspection not found")
+
         # Verify receiver exists
-        receiver = db.query(models.User).filter(
-            models.User.id == request.receiver_id
-        ).first()
-        
+        receiver = db.query(models.User).filter(models.User.id == receiver_id).first()
         if not receiver:
-            print(f"[MESSAGING ERROR] Receiver {request.receiver_id} not found")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Receiver not found"
-            )
-        
-        # Generate thread_id: sort user IDs to ensure same thread for both directions
-        # Format: "user_1_2" where 1 < 2, or "inspection_5_user_1_2" for inspection-related
-        user_ids = sorted([current_user.id, request.receiver_id])
-        if request.inspection_id:
-            thread_id = f"inspection_{request.inspection_id}_user_{user_ids[0]}_{user_ids[1]}"
+            raise HTTPException(status_code=404, detail="Receiver not found")
+
+        # Generate thread_id
+        user_ids = sorted([current_user.id, receiver_id])
+        if inspection_id:
+            thread_id = f"inspection_{inspection_id}_user_{user_ids[0]}_{user_ids[1]}"
         else:
             thread_id = f"user_{user_ids[0]}_{user_ids[1]}"
-        
-        print(f"[MESSAGING] Thread ID: {thread_id}")
-        
+
+        # Handle file upload
+        attachment_url = None
+        attachment_type = None
+        attachment_name = None
+        if attachment:
+            uploads_dir = Path("uploads/messages")
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            ext = os.path.splitext(attachment.filename)[1].lower()
+            safe_name = f"msg_{current_user.id}_{receiver_id}_{int(datetime.now().timestamp())}{ext}"
+            file_path = uploads_dir / safe_name
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(attachment.file, buffer)
+            attachment_url = str(file_path)
+            attachment_name = attachment.filename
+            if ext in [".jpg", ".jpeg", ".png", ".gif"]:
+                attachment_type = "image"
+            else:
+                attachment_type = "file"
+
         # Create message
-        print(f"[MESSAGING] Creating message object...")
         new_message = models.Message(
             thread_id=thread_id,
-            inspection_id=request.inspection_id,
+            inspection_id=inspection_id,
             sender_id=current_user.id,
-            receiver_id=request.receiver_id,
-            reply_to_id=request.reply_to_id,
-            subject=request.subject,
-            content=request.content,
-            status=models.MessageStatusEnum.unread
+            receiver_id=receiver_id,
+            reply_to_id=reply_to_id,
+            subject=subject,
+            content=content,
+            status=models.MessageStatusEnum.unread,
+            attachment_url=attachment_url,
+            attachment_type=attachment_type,
+            attachment_name=attachment_name
         )
-        
-        print(f"[MESSAGING] Adding message to database...")
         db.add(new_message)
-        
-        print(f"[MESSAGING] Committing transaction...")
         db.commit()
-        
-        print(f"[MESSAGING] Refreshing message object...")
         db.refresh(new_message)
-        
-        print(f"[MESSAGING SUCCESS] Message {new_message.id} sent to {receiver.full_name}")
-        
         return {
             "message": "Message sent successfully",
             "message_id": new_message.id,
             "thread_id": thread_id,
-            "sent_to": receiver.full_name,
-            "sent_at": new_message.created_at.isoformat()
+            "sent_to": receiver.username,
+            "sent_at": new_message.created_at.isoformat(),
+            "attachment_url": attachment_url,
+            "attachment_type": attachment_type,
+            "attachment_name": attachment_name
         }
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[MESSAGING ERROR] Exception occurred: {type(e).__name__}: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send message: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 # Get conversation threads (Gmail-style)
 @router.get("/threads")
@@ -120,7 +123,6 @@ def get_threads(
     db: Session = Depends(get_db)
 ):
     """Get all conversation threads for current user, grouped like Gmail"""
-    from sqlalchemy import func, or_, and_
     
     # Get all unique thread_ids involving current user
     threads_query = db.query(
@@ -174,12 +176,12 @@ def get_threads(
         threads.append({
             "thread_id": thread_id,
             "subject": first_message.subject or "No subject",
-            "other_user_id": other_user.id if other_user else None,
-            "other_user_name": other_user.full_name if other_user else "Unknown",
-            "other_user_role": other_user.role.value if other_user else None,
+            "participant_id": other_user.id if other_user else None,
+            "participant_name": other_user.username if other_user else "Unknown",
+            "participant_role": other_user.role.value if other_user else None,
             "last_message_preview": last_message.content[:100] + ("..." if len(last_message.content) > 100 else ""),
             "last_message_time": last_message.created_at.isoformat(),
-            "last_message_sender": "You" if last_message.sender_id == current_user.id else other_user.full_name if other_user else "Unknown",
+            "last_message_sender": "You" if last_message.sender_id == current_user.id else other_user.username if other_user else "Unknown",
             "message_count": thread_info[2],
             "unread_count": thread_info[3] or 0,
             "inspection_id": last_message.inspection_id,
@@ -225,10 +227,11 @@ def get_thread_messages(
         "id": msg.id,
         "thread_id": msg.thread_id,
         "sender_id": msg.sender_id,
-        "sender_name": msg.sender.full_name,
+        "sender_name": msg.sender.username,
         "receiver_id": msg.receiver_id,
-        "receiver_name": msg.receiver.full_name,
+        "receiver_name": msg.receiver.username,
         "content": msg.content,
+        "status": msg.status.value,
         "created_at": msg.created_at.isoformat(),
         "is_sender": msg.sender_id == current_user.id
     } for msg in messages]
@@ -254,9 +257,9 @@ def get_inspection_messages(
         "inspection_id": msg.inspection_id,
         "inspection_title": msg.inspection.title if msg.inspection else None,
         "sender_id": msg.sender_id,
-        "sender_name": msg.sender.full_name,
+        "sender_name": msg.sender.username,
         "receiver_id": msg.receiver_id,
-        "receiver_name": msg.receiver.full_name,
+        "receiver_name": msg.receiver.username,
         "subject": msg.subject,
         "content": msg.content,
         "status": msg.status.value,
@@ -283,9 +286,9 @@ def get_my_messages(
         "inspection_id": msg.inspection_id,
         "inspection_title": msg.inspection.title if msg.inspection else None,
         "sender_id": msg.sender_id,
-        "sender_name": msg.sender.full_name,
+        "sender_name": msg.sender.username,
         "receiver_id": msg.receiver_id,
-        "receiver_name": msg.receiver.full_name,
+        "receiver_name": msg.receiver.username,
         "reply_to_id": msg.reply_to_id,
         "subject": msg.subject,
         "content": msg.content,
@@ -350,7 +353,6 @@ def get_all_users(
     
     return [{
         "id": user.id,
-        "full_name": user.full_name,
         "username": user.username,
         "email": user.email,
         "role": user.role.value
