@@ -22,20 +22,18 @@ class TokenData(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
-    full_name: Optional[str] = None
     email: Optional[EmailStr] = None
 
 class UserOut(BaseModel):
     id: int
     username: str
-    full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: RoleEnum
     phone: Optional[str] = None
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Login form
 class LoginForm(BaseModel):

@@ -51,10 +51,24 @@ def get_password_hash(password: str):
 # AUTHENTICATE USER
 
 def authenticate_user(db: Session, username: str, password: str):
-    user = db.query(models.User).filter(models.User.username == username).first()
+    print(f"\n[DEBUG] Attempting login for username/staff_id: '{username}'")
+    print(f"[DEBUG] Password length: {len(password)}")
+    
+    # Try to find user by username or staff_id
+    user = db.query(models.User).filter(
+        (models.User.username == username) | (models.User.staff_id == username)
+    ).first()
     if not user:
+        print(f"[DEBUG] User not found: '{username}'")
         return None
-    if not verify_password(password, user.password_hash):
+    
+    print(f"[DEBUG] User found: {user.username}")
+    print(f"[DEBUG] Stored hash starts with: {user.password_hash[:30]}...")
+    
+    verification_result = verify_password(password, user.password_hash)
+    print(f"[DEBUG] Password verification result: {verification_result}")
+    
+    if not verification_result:
         return None
     return user
 
@@ -92,26 +106,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 def get_current_active_user(current_user: models.User = Depends(get_current_user)):
     return current_user
-
-# REGISTER NEW USER (DEFAULT: inspector)
-
-@router.post("/register", response_model=schemas.UserOut)
-def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.username == user_in.username).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already registered")
-
-    user = models.User(
-        username=user_in.username,
-        password_hash=get_password_hash(user_in.password),  # Argon2 hash
-        full_name=user_in.full_name,
-        email=user_in.email,
-        role="inspector"
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
 
 # LOGIN
 

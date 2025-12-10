@@ -1,10 +1,12 @@
 // Main.dart
 import 'package:flutter/material.dart';
 import 'login_page.dart';
-import 'signup_page.dart';
 import 'dashboard_page.dart';
+import 'manager_dashboard_page.dart';
 import 'job_management_page.dart';
 import 'report_review_page.dart';
+import 'history_page.dart';
+import 'my_tasks_page.dart';
 
 void main() {
   runApp(const WorkshopApp());
@@ -29,15 +31,11 @@ class WorkshopApp extends StatelessWidget {
         // Login Page
         '/login': (context) => const LoginPage(),
 
-        // Signup Page
-        '/signup': (context) => SignUpPage(
-              onBackToLogin: () {
-                Navigator.pushReplacementNamed(context, '/login');
-              },
-            ),
-
         // Dashboard Page
         '/dashboard': (context) => const DashboardModule(),
+        
+        // Manager Dashboard Page
+        '/manager-dashboard': (context) => const ManagerDashboardPage(),
 
         // Job Management Page
         '/jobs': (context) => const InspectionJobModule(),
@@ -45,15 +43,21 @@ class WorkshopApp extends StatelessWidget {
         // FIXED — Now this works
         '/review': (context) => const ReportReviewPage(),
 
+        // History Page
+        '/history': (context) => const HistoryPage(),
+
+        // My Tasks Page (Inspector)
+        '/my-tasks': (context) => const MyTasksPage(),
+
         // Placeholder routes
         //'/repository': (context) =>
-            //const PlaceholderPage(title: "Report Repository"),
+        //const PlaceholderPage(title: "Report Repository"),
         //'/maintenance': (context) =>
-            //const PlaceholderPage(title: "Maintenance Tasks"),
+        //const PlaceholderPage(title: "Maintenance Tasks"),
         //'/analytics': (context) =>
-            //const PlaceholderPage(title: "Analytics & Reports"),
+        //const PlaceholderPage(title: "Analytics & Reports"),
         //'/notifications': (context) =>
-            //const PlaceholderPage(title: "Notifications"),
+        //const PlaceholderPage(title: "Notifications"),
 
         // Logout
         '/logout': (context) => const LoginPage(),

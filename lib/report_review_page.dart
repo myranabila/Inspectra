@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/report_service.dart';
 
 class ReportReviewPage extends StatelessWidget {
   const ReportReviewPage({super.key});
@@ -33,10 +34,7 @@ class ReportReviewPage extends StatelessWidget {
                   padding: EdgeInsets.all(16.0),
                   child: Text(
                     'Pending Reports',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
 
@@ -49,8 +47,10 @@ class ReportReviewPage extends StatelessWidget {
                           child: Text('${i + 1}'),
                         ),
                         title: Text('Report 00${i + 1}'),
-                        subtitle: const Text('Standard Report',
-                            style: TextStyle(color: Colors.grey)),
+                        subtitle: const Text(
+                          'Standard Report',
+                          style: TextStyle(color: Colors.grey),
+                        ),
                         trailing: Icon(
                           Icons.chevron_right,
                           color: Colors.grey.shade600,
@@ -115,7 +115,7 @@ class ReportReviewPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 6,
                             offset: const Offset(0, 3),
                           ),
@@ -214,7 +214,15 @@ class ReportReviewPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       OutlinedButton(
-                        onPressed: () {},
+                        onPressed: () async {
+                          // TODO: Get reportId and reason from UI
+                          final reportId = 1; // Replace with actual report ID
+                          final reason = 'Needs revision'; // Replace with actual reason
+                          final result = await ReportService.rejectReport(reportId, reason);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result['message'] ?? 'Revision requested')),
+                          );
+                        },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: const BorderSide(color: Colors.red),
@@ -224,7 +232,14 @@ class ReportReviewPage extends StatelessWidget {
                       const SizedBox(width: 12),
 
                       ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () async {
+                          // TODO: Get reportId from UI
+                          final reportId = 1; // Replace with actual report ID
+                          final result = await ReportService.approveReport(reportId);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result['message'] ?? 'Report approved')),
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -264,10 +279,7 @@ Widget _commentTile(String name, String comment) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text(comment),
             ],

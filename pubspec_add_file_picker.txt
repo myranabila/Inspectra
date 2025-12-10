@@ -1,0 +1,2 @@
+# Add this to your pubspec.yaml under dependencies:
+file_picker: ^6.1.1
