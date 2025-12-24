@@ -11,11 +11,12 @@ class ManagerUserManagementPage extends StatefulWidget {
 
 class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
   bool _isLoading = true;
-  bool _includeInactive = false;
+  bool _includeInactive = true; 
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _filteredUsers = [];
   String _searchQuery = '';
   String _filterRole = 'all';
+  String _sortBy = 'name'; 
 
   @override
   void initState() {
@@ -23,9 +24,9 @@ class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
     _loadUsers();
   }
 
+  // --- LOGIC: FETCH DATA FROM SERVICE ---
   Future<void> _loadUsers() async {
     setState(() => _isLoading = true);
-
     try {
       final users = await ProfileService.getAllUsers(includeInactive: _includeInactive);
       setState(() {
@@ -35,186 +36,380 @@ class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load users: $e'), backgroundColor: Colors.red),
-        );
-      }
+      _showSnackBar('Failed to load data: $e', isError: true);
     }
   }
 
+  // --- LOGIC: SORTING & FILTERING ---
   void _applyFilters() {
-    _filteredUsers = _users.where((user) {
+    List<Map<String, dynamic>> results = _users.where((user) {
       final matchesSearch = user['username'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
                             user['email'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
       final matchesRole = _filterRole == 'all' || user['role'] == _filterRole;
       return matchesSearch && matchesRole;
     }).toList();
+
+    if (_sortBy == 'name') {
+      results.sort((a, b) => a['username'].toString().toLowerCase().compareTo(b['username'].toString().toLowerCase()));
+    } else if (_sortBy == 'newest') {
+      results.sort((a, b) => b['created_at'].toString().compareTo(a['created_at'].toString()));
+    } else if (_sortBy == 'role') {
+      results.sort((a, b) => a['role'].toString().compareTo(b['role'].toString()));
+    }
+
+    setState(() {
+      _filteredUsers = results;
+    });
   }
+
+  // --- UI: MINI-FUNCTIONS DASHBOARD ---
+  Widget _buildDashboard() {
+    int total = _users.length;
+    int activeInspectors = _users.where((u) => u['role'] == 'inspector' && u['is_active'] == true).length;
+    int inactive = _users.where((u) => u['is_active'] == false).length;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade900, Colors.blue.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('Total Users', total.toString(), Icons.group),
+          _buildStatItem('Active Inspectors', activeInspectors.toString(), Icons.engineering),
+          _buildStatItem('Inactive', inactive.toString(), Icons.person_off),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white70, size: 24),
+        const SizedBox(height: 8),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+      ],
+    );
+  }
+
+  // --- UI: SEARCH & FILTER BAR ---
+  Widget _buildSearchAndFilter() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Material(
+            elevation: 3,
+            shadowColor: Colors.black26,
+            borderRadius: BorderRadius.circular(15),
+            child: TextField(
+              onChanged: (v) {
+                _searchQuery = v;
+                _applyFilters();
+              },
+              decoration: InputDecoration(
+                hintText: 'Search username or email...',
+                prefixIcon: const Icon(Icons.search, color: Colors.blue),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 15),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _filterChip('All', 'all'),
+                      const SizedBox(width: 8),
+                      _filterChip('Inspectors', 'inspector'),
+                      const SizedBox(width: 8),
+                      _filterChip('Managers', 'manager'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.sort_rounded, color: Colors.blue),
+                tooltip: 'Sort Data',
+                onSelected: (val) {
+                  setState(() {
+                    _sortBy = val;
+                    _applyFilters();
+                  });
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'name', child: Text('Sort: Name (A-Z)')),
+                  const PopupMenuItem(value: 'newest', child: Text('Sort: Newest')),
+                  const PopupMenuItem(value: 'role', child: Text('Sort: Role')),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String value) {
+    bool isSelected = _filterRole == value;
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black)),
+      selected: isSelected,
+      selectedColor: Colors.blue.shade700,
+      backgroundColor: Colors.white,
+      onSelected: (s) {
+        setState(() {
+          _filterRole = value;
+          _applyFilters();
+        });
+      },
+    );
+  }
+
+  // --- UI: USER LIST CARDS ---
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text('User Management', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue.shade900,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadUsers),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showCreateUserDialog,
+        icon: const Icon(Icons.person_add),
+        label: const Text('New User'),
+        backgroundColor: Colors.blue.shade900,
+      ),
+      body: Column(
+        children: [
+          _buildDashboard(),
+          _buildSearchAndFilter(),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredUsers.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _filteredUsers.length,
+                        itemBuilder: (context, index) => _buildUserCard(_filteredUsers[index]),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserCard(Map<String, dynamic> user) {
+    bool isManager = user['role'] == 'manager';
+    bool isActive = user['is_active'] ?? true;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(12),
+        leading: CircleAvatar(
+          radius: 25,
+          backgroundColor: isManager ? Colors.purple.shade50 : Colors.blue.shade50,
+          child: Icon(
+            isManager ? Icons.admin_panel_settings : Icons.engineering,
+            color: isManager ? Colors.purple : Colors.blue,
+          ),
+        ),
+        title: Text(user['username'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(user['email'], style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                _statusBadge(isActive),
+                const SizedBox(width: 8),
+                Text(user['role'].toString().toUpperCase(), 
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+              ],
+            ),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (val) => _handleMenuAction(val, user),
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'view', child: ListTile(leading: Icon(Icons.visibility), title: Text('Full Profile'), dense: true)),
+            const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Edit Data'), dense: true)),
+            const PopupMenuItem(value: 'reset', child: ListTile(leading: Icon(Icons.lock_reset), title: Text('Reset Password'), dense: true)),
+            PopupMenuItem(
+              value: isActive ? 'deactivate' : 'activate',
+              child: ListTile(
+                leading: Icon(isActive ? Icons.block : Icons.check_circle, color: isActive ? Colors.red : Colors.green),
+                title: Text(isActive ? 'Deactivate' : 'Activate'),
+                dense: true,
+              ),
+            ),
+            const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete, color: Colors.red), title: Text('Delete Permanently', style: TextStyle(color: Colors.red)), dense: true)),
+          ],
+        ),
+        onTap: () => _showUserDetailsDialog(user),
+      ),
+    );
+  }
+
+  Widget _statusBadge(bool active) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: active ? Colors.green.shade50 : Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: active ? Colors.green.shade200 : Colors.red.shade200),
+      ),
+      child: Text(active ? 'ACTIVE' : 'INACTIVE', 
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: active ? Colors.green.shade700 : Colors.red.shade700)),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_search, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text('No users found', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+        ],
+      ),
+    );
+  }
+
+  // --- LOGIC: MENU ACTIONS ---
+  void _handleMenuAction(String action, Map<String, dynamic> user) {
+    switch (action) {
+      case 'view': _showUserDetailsDialog(user); break;
+      case 'edit': _showEditUserDialog(user); break;
+      case 'reset': _showResetPasswordDialog(user); break;
+      case 'deactivate': _toggleStatus(user, false); break;
+      case 'activate': _toggleStatus(user, true); break;
+      case 'delete': _confirmDeleteUser(user); break;
+    }
+  }
+
+  Future<void> _toggleStatus(Map<String, dynamic> user, bool activate) async {
+    try {
+      if (activate) await ProfileService.activateUser(user['id']);
+      else await ProfileService.deactivateUser(user['id']);
+      _showSnackBar(activate ? 'Account activated' : 'Account deactivated');
+      _loadUsers();
+    } catch (e) { _showSnackBar(e.toString(), isError: true); }
+  }
+
+  // --- DIALOGS ---
 
   void _showCreateUserDialog() {
     final formKey = GlobalKey<FormState>();
-    final usernameController = TextEditingController();
-    final emailController = TextEditingController();
-    final phoneController = TextEditingController();
-    final passwordController = TextEditingController();
-    final expController = TextEditingController();
-    
-    String selectedRole = 'inspector';
-    bool generateTempPassword = false;
-    bool showPassword = false;
+    final userC = TextEditingController();
+    final emailC = TextEditingController();
+    final phoneC = TextEditingController();
+    final passC = TextEditingController();
+    final expC = TextEditingController();
+    String role = 'inspector';
+    bool genTemp = true;
+    bool showPassword = false; // New variable for visibility
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Create New User'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Add New User'),
           content: SingleChildScrollView(
             child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextFormField(
-                    controller: usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Username *',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email *',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
-                    ),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (!v.contains('@')) return 'Invalid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  TextFormField(
-                    controller: phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.phone),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
+                  TextFormField(controller: userC, decoration: const InputDecoration(labelText: 'Username *'), validator: (v) => v!.isEmpty ? 'Required' : null),
+                  TextFormField(controller: emailC, decoration: const InputDecoration(labelText: 'Email *'), validator: (v) => !v!.contains('@') ? 'Invalid email' : null),
+                  TextFormField(controller: phoneC, decoration: const InputDecoration(labelText: 'Phone Number')),
                   DropdownButtonFormField<String>(
-                    value: selectedRole,
-                    decoration: const InputDecoration(
-                      labelText: 'Role *',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.work),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'inspector', child: Text('Inspector')),
-                      DropdownMenuItem(value: 'manager', child: Text('Manager')),
-                    ],
-                    onChanged: (value) => setDialogState(() => selectedRole = value!),
+                    value: role,
+                    items: const [DropdownMenuItem(value: 'inspector', child: Text('Inspector')), DropdownMenuItem(value: 'manager', child: Text('Manager'))],
+                    onChanged: (v) => setDialogState(() => role = v!),
+                    decoration: const InputDecoration(labelText: 'Role'),
                   ),
-                  const SizedBox(height: 12),
-                  
-                  if (selectedRole == 'inspector') ...[
-                    TextFormField(
-                      controller: expController,
-                      decoration: const InputDecoration(
-                        labelText: 'Years of Experience',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  
+                  if (role == 'inspector') TextFormField(controller: expC, decoration: const InputDecoration(labelText: 'Years of Experience'), keyboardType: TextInputType.number),
+                  const SizedBox(height: 10),
                   CheckboxListTile(
-                    title: const Text('Generate temporary password'),
-                    value: generateTempPassword,
-                    onChanged: (value) => setDialogState(() {
-                      generateTempPassword = value!;
-                      if (generateTempPassword) passwordController.clear();
-                    }),
+                    title: const Text('Use Temporary Password', style: TextStyle(fontSize: 14)),
+                    value: genTemp,
+                    onChanged: (v) => setDialogState(() => genTemp = v!),
+                    contentPadding: EdgeInsets.zero,
                   ),
-                  
-                  if (!generateTempPassword) ...[
-                    const SizedBox(height: 8),
+                  if (!genTemp) 
                     TextFormField(
-                      controller: passwordController,
-                      obscureText: !showPassword,
+                      controller: passC, 
+                      obscureText: !showPassword, // Hide or show based on variable
                       decoration: InputDecoration(
-                        labelText: 'Password *',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.lock),
+                        labelText: 'Password',
                         suffixIcon: IconButton(
-                          icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
+                          icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
                           onPressed: () => setDialogState(() => showPassword = !showPassword),
                         ),
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (v.length < 6) return 'Min 6 characters';
-                        return null;
-                      },
+                      validator: (v) => v!.isEmpty ? 'Required' : null,
                     ),
-                  ],
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
-
                 try {
-                  final result = await ProfileService.createUser(
-                    username: usernameController.text,
-                    password: generateTempPassword ? null : passwordController.text,
-                    email: emailController.text,
-                    role: selectedRole,
-                    phone: phoneController.text.isEmpty ? null : phoneController.text,
-                    yearsExperience: expController.text.isEmpty ? null : int.tryParse(expController.text),
-                    generateTempPassword: generateTempPassword,
+                  final res = await ProfileService.createUser(
+                    username: userC.text, email: emailC.text, role: role, phone: phoneC.text,
+                    yearsExperience: int.tryParse(expC.text), password: genTemp ? null : passC.text,
+                    generateTempPassword: genTemp
                   );
-
-                  if (mounted) Navigator.pop(context);
-                  
-                  // Show temporary password if generated
-                  if (result.containsKey('temporary_password')) {
-                    _showTemporaryPasswordDialog(usernameController.text, result['temporary_password']);
+                  Navigator.pop(context);
+                  if (res.containsKey('temporary_password')) {
+                    _showTempPassDialog(userC.text, res['temporary_password']);
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User created successfully!'), backgroundColor: Colors.green),
-                    );
+                    _showSnackBar('User registered successfully');
                   }
-                  
                   _loadUsers();
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-                  );
-                }
+                } catch (e) { _showSnackBar(e.toString(), isError: true); }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              child: const Text('Create User'),
+              child: const Text('Register'),
             ),
           ],
         ),
@@ -222,71 +417,138 @@ class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
     );
   }
 
-  void _showTemporaryPasswordDialog(String username, String tempPassword) {
+  void _showEditUserDialog(Map<String, dynamic> user) {
+    final emailC = TextEditingController(text: user['email']);
+    final phoneC = TextEditingController(text: user['phone'] ?? '');
+    final expC = TextEditingController(text: user['years_experience']?.toString() ?? '');
+    String role = user['role'];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Edit ${user['username']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(controller: emailC, decoration: const InputDecoration(labelText: 'Email')),
+              TextFormField(controller: phoneC, decoration: const InputDecoration(labelText: 'Phone')),
+              DropdownButtonFormField<String>(
+                value: role,
+                items: const [DropdownMenuItem(value: 'inspector', child: Text('Inspector')), DropdownMenuItem(value: 'manager', child: Text('Manager'))],
+                onChanged: (v) => setDialogState(() => role = v!),
+              ),
+              if (role == 'inspector') TextFormField(controller: expC, decoration: const InputDecoration(labelText: 'Experience (Years)'), keyboardType: TextInputType.number),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await ProfileService.updateUser(
+                    userId: user['id'], email: emailC.text, phone: phoneC.text,
+                    role: role, yearsExperience: int.tryParse(expC.text)
+                  );
+                  Navigator.pop(context);
+                  _showSnackBar('Data updated successfully');
+                  _loadUsers();
+                } catch (e) { _showSnackBar(e.toString(), isError: true); }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showResetPasswordDialog(Map<String, dynamic> user) {
+    bool genTemp = true;
+    final passC = TextEditingController();
+    bool showPassword = false; // New variable for visibility
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Reset Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Reset for user: ${user['username']}'),
+              const SizedBox(height: 15),
+              CheckboxListTile(
+                title: const Text('Generate temporary password'),
+                value: genTemp,
+                onChanged: (v) => setDialogState(() => genTemp = v!),
+              ),
+              if (!genTemp) 
+                TextFormField(
+                  controller: passC, 
+                  obscureText: !showPassword,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    suffixIcon: IconButton(
+                      icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setDialogState(() => showPassword = !showPassword),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: () async {
+                try {
+                  final res = await ProfileService.resetUserPassword(userId: user['id'], newPassword: genTemp ? null : passC.text, generateTempPassword: genTemp);
+                  Navigator.pop(context);
+                  if (res.containsKey('temporary_password')) {
+                    _showTempPassDialog(user['username'], res['temporary_password']);
+                  } else {
+                    _showSnackBar('Password changed successfully');
+                  }
+                } catch (e) { _showSnackBar(e.toString(), isError: true); }
+              },
+              child: const Text('Reset Now'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTempPassDialog(String user, String pass) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text('Temporary Password'),
-          ],
-        ),
+        title: const Text('PLEASE COPY PASSWORD'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('User created successfully!'),
-            const SizedBox(height: 16),
-            const Text('Temporary password:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            Text('Temporary password for $user:'),
+            const SizedBox(height: 15),
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: SelectableText(
-                      tempPassword,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: tempPassword));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Password copied to clipboard')),
-                      );
-                    },
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10)),
+              child: SelectableText(pass, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.blue)),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '⚠️ Please save this password! It cannot be retrieved later.',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Provide this password to $username. They should change it after first login.',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
+            const SizedBox(height: 10),
+            const Text('⚠️ Please provide this code to the user.', style: TextStyle(color: Colors.red, fontSize: 11)),
           ],
         ),
         actions: [
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: const Text('I have saved the password'),
-          ),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: pass));
+              Navigator.pop(context);
+              _showSnackBar('Copied to clipboard');
+            }, 
+            child: const Text('Copy & Close')
+          )
         ],
       ),
     );
@@ -296,223 +558,32 @@ class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(user['username']),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Username', user['username']),
-              _buildDetailRow('Staff ID', user['staff_id'] ?? 'Not assigned'),
-              _buildDetailRow('Email', user['email']),
-              _buildDetailRow('Phone', user['phone'] ?? '-'),
-              _buildDetailRow('Role', user['role'].toString().toUpperCase()),
-              if (user['years_experience'] != null)
-                _buildDetailRow('Experience', '${user['years_experience']} years'),
-              _buildDetailRow('Status', user['is_active'] ? 'Active' : 'Inactive'),
-              _buildDetailRow('Created', _formatDate(user['created_at'])),
-              if (user['last_password_change'] != null)
-                _buildDetailRow('Last Password Change', _formatDate(user['last_password_change'])),
-            ],
-          ),
+        title: Text('${user['username']}\'s Profile'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _detailRow('Email', user['email']),
+            _detailRow('Phone', user['phone'] ?? '-'),
+            _detailRow('Role', user['role'].toString().toUpperCase()),
+            _detailRow('Status', user['is_active'] ? 'ACTIVE' : 'INACTIVE'),
+            if (user['years_experience'] != null) _detailRow('Experience', '${user['years_experience']} Years'),
+            _detailRow('Staff ID', user['staff_id'] ?? 'Not assigned'),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              _showEditUserDialog(user);
-            },
-            icon: const Icon(Icons.edit),
-            label: const Text('Edit'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-          ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String val) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 100, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey))),
+          Expanded(child: Text(': $val')),
         ],
-      ),
-    );
-  }
-
-  void _showEditUserDialog(Map<String, dynamic> user) {
-    final formKey = GlobalKey<FormState>();
-    final emailController = TextEditingController(text: user['email']);
-    final phoneController = TextEditingController(text: user['phone'] ?? '');
-    final expController = TextEditingController(text: user['years_experience']?.toString() ?? '');
-    
-    String selectedRole = user['role'];
-    bool isActive = user['is_active'];
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Edit ${user['username']}'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(labelText: 'Email *', border: OutlineInputBorder()),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: phoneController,
-                    decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: selectedRole,
-                    decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
-                    items: const [
-                      DropdownMenuItem(value: 'inspector', child: Text('Inspector')),
-                      DropdownMenuItem(value: 'manager', child: Text('Manager')),
-                    ],
-                    onChanged: (value) => setDialogState(() => selectedRole = value!),
-                  ),
-                  const SizedBox(height: 12),
-                  if (selectedRole == 'inspector') ...[
-                    TextFormField(
-                      controller: expController,
-                      decoration: const InputDecoration(labelText: 'Years of Experience', border: OutlineInputBorder()),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  SwitchListTile(
-                    title: const Text('Account Active'),
-                    value: isActive,
-                    onChanged: (value) => setDialogState(() => isActive = value),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-
-                try {
-                  await ProfileService.updateUser(
-                    userId: user['id'],
-                    email: emailController.text,
-                    phone: phoneController.text.isEmpty ? null : phoneController.text,
-                    role: selectedRole,
-                    isActive: isActive,
-                    yearsExperience: expController.text.isEmpty ? null : int.tryParse(expController.text),
-                  );
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User updated successfully!'), backgroundColor: Colors.green),
-                    );
-                    _loadUsers();
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              child: const Text('Update'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showResetPasswordDialog(Map<String, dynamic> user) {
-    bool generateTemp = true;
-    final passwordController = TextEditingController();
-    bool showPassword = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Reset Password for ${user['username']}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CheckboxListTile(
-                title: const Text('Generate temporary password'),
-                value: generateTemp,
-                onChanged: (value) => setDialogState(() {
-                  generateTemp = value!;
-                  if (generateTemp) passwordController.clear();
-                }),
-              ),
-              if (!generateTemp) ...[
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: passwordController,
-                  obscureText: !showPassword,
-                  decoration: InputDecoration(
-                    labelText: 'New Password',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setDialogState(() => showPassword = !showPassword),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!generateTemp && passwordController.text.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password must be at least 6 characters'), backgroundColor: Colors.red),
-                  );
-                  return;
-                }
-
-                try {
-                  final result = await ProfileService.resetUserPassword(
-                    userId: user['id'],
-                    newPassword: generateTemp ? null : passwordController.text,
-                    generateTempPassword: generateTemp,
-                  );
-
-                  if (mounted) Navigator.pop(context);
-                  
-                  if (result.containsKey('temporary_password')) {
-                    _showTemporaryPasswordDialog(user['username'], result['temporary_password']);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Password reset successfully!'), backgroundColor: Colors.green),
-                    );
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Reset Password'),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -521,253 +592,30 @@ class _ManagerUserManagementPageState extends State<ManagerUserManagementPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: Text('Are you sure you want to permanently delete user "${user['username']}"? This action cannot be undone.'),
+        title: const Text('Delete User?'),
+        content: Text('Are you sure you want to permanently delete account "${user['username']}"? This action cannot be undone.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
                 await ProfileService.deleteUser(user['id']);
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User deleted successfully'), backgroundColor: Colors.green),
-                  );
-                  _loadUsers();
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
+                Navigator.pop(context);
+                _showSnackBar('User deleted');
+                _loadUsers();
+              } catch (e) { _showSnackBar(e.toString(), isError: true); }
+            }, 
+            child: const Text('Delete Now'),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('User Management'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadUsers,
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateUserDialog,
-        icon: const Icon(Icons.person_add),
-        label: const Text('Create User'),
-        backgroundColor: Colors.blue,
-      ),
-      body: Column(
-        children: [
-          // Search and Filter Bar
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey[100],
-            child: Column(
-              children: [
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Search users...',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                      _applyFilters();
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'all', label: Text('All')),
-                          ButtonSegment(value: 'inspector', label: Text('Inspectors')),
-                          ButtonSegment(value: 'manager', label: Text('Managers')),
-                        ],
-                        selected: {_filterRole},
-                        onSelectionChanged: (value) {
-                          setState(() {
-                            _filterRole = value.first;
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilterChip(
-                      label: const Text('Show Inactive'),
-                      selected: _includeInactive,
-                      onSelected: (value) {
-                        setState(() => _includeInactive = value);
-                        _loadUsers();
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Users List
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredUsers.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text('No users found', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _filteredUsers.length,
-                        itemBuilder: (context, index) {
-                          final user = _filteredUsers[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: user['role'] == 'manager' ? Colors.purple.shade100 : Colors.blue.shade100,
-                                child: Icon(
-                                  user['role'] == 'manager' ? Icons.admin_panel_settings : Icons.engineering,
-                                  color: user['role'] == 'manager' ? Colors.purple : Colors.blue,
-                                ),
-                              ),
-                              title: Text(user['username'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(user['email'], style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Chip(
-                                    label: Text(
-                                      user['role'].toString().toUpperCase(),
-                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
-                                    backgroundColor: user['role'] == 'manager' ? Colors.purple.shade100 : Colors.blue.shade100,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (!user['is_active'])
-                                    const Chip(
-                                      label: Text('INACTIVE', style: TextStyle(fontSize: 10, color: Colors.white)),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  PopupMenuButton(
-                                    itemBuilder: (context) => [
-                                      const PopupMenuItem(value: 'view', child: Row(children: [Icon(Icons.visibility), SizedBox(width: 8), Text('View Details')])),
-                                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit')])),
-                                      const PopupMenuItem(value: 'reset', child: Row(children: [Icon(Icons.lock_reset), SizedBox(width: 8), Text('Reset Password')])),
-                                      PopupMenuItem(
-                                        value: user['is_active'] ? 'deactivate' : 'activate',
-                                        child: Row(children: [
-                                          Icon(user['is_active'] ? Icons.block : Icons.check_circle),
-                                          const SizedBox(width: 8),
-                                          Text(user['is_active'] ? 'Deactivate' : 'Activate'),
-                                        ]),
-                                      ),
-                                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
-                                    ],
-                                    onSelected: (value) {
-                                      switch (value) {
-                                        case 'view':
-                                          _showUserDetailsDialog(user);
-                                          break;
-                                        case 'edit':
-                                          _showEditUserDialog(user);
-                                          break;
-                                        case 'reset':
-                                          _showResetPasswordDialog(user);
-                                          break;
-                                        case 'deactivate':
-                                          ProfileService.deactivateUser(user['id']).then((_) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('User deactivated'), backgroundColor: Colors.orange),
-                                            );
-                                            _loadUsers();
-                                          });
-                                          break;
-                                        case 'activate':
-                                          ProfileService.activateUser(user['id']).then((_) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('User activated'), backgroundColor: Colors.green),
-                                            );
-                                            _loadUsers();
-                                          });
-                                          break;
-                                        case 'delete':
-                                          _confirmDeleteUser(user);
-                                          break;
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                              isThreeLine: true,
-                              onTap: () => _showUserDetailsDialog(user),
-                            ),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
+  void _showSnackBar(String msg, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: isError ? Colors.red : Colors.green, behavior: SnackBarBehavior.floating),
     );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
-          ),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(String? dateString) {
-    if (dateString == null) return '-';
-    try {
-      final date = DateTime.parse(dateString);
-      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return dateString;
-    }
   }
 }
