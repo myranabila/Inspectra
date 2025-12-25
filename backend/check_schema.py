@@ -1,13 +1,15 @@
-from sqlalchemy import inspect
-from db import engine
+import sqlite3
 
-inspector = inspect(engine)
+conn = sqlite3.connect('inspectra.db')
+cursor = conn.cursor()
 
-print('Tables:', inspector.get_table_names())
-print('\nMessages table exists:', 'messages' in inspector.get_table_names())
+# Get table schema
+cursor.execute("PRAGMA table_info(inspections)")
+columns = cursor.fetchall()
 
-if 'messages' in inspector.get_table_names():
-    cols = inspector.get_columns('messages')
-    print('\nMessages table columns:')
-    for col in cols:
-        print(f'  {col["name"]}: {col["type"]} (nullable={col.get("nullable", "?")})')
+print("Inspections table schema:")
+print("-" * 80)
+for col in columns:
+    print(f"{col[1]:30} {col[2]:15} NULL={not col[3]} DEFAULT={col[4]}")
+
+conn.close()

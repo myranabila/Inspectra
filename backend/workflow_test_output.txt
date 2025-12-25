@@ -1,0 +1,35 @@
+﻿============================================================
+TESTING TASK ASSIGNMENT WORKFLOW
+============================================================
+
+[STEP 1] Ensuring manager user exists...
+python : Traceback (most recent call 
+last):
+At line:1 char:1
++ python test_assign_workflow.py 
+2>&1 | Out-File -Encoding utf8 
+workflo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpe 
+   cified: (Traceback (most recent   
+  call last)::String) [], RemoteEx   
+ ception
+    + FullyQualifiedErrorId : Native 
+   CommandError
+ 
+  File "C:\workshop2\Inspectra\backen
+d\test_assign_workflow.py", line 32, 
+in <module>
+    print("\u2713 Manager user 
+already exists")
+  File "C:\Users\muham\AppData\Local\
+Programs\Python\Python312\Lib\encodin
+gs\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(inpu
+t,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec 
+can't encode character '\u2713' in 
+position 0: character maps to 
+<undefined>

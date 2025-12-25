@@ -5,15 +5,19 @@ import 'auth_service.dart';
 class ManagerService {
   static final String baseUrl = '${ApiConfig.baseUrl}/manager';
 
-  // Assign task to inspector
+  // Assign task to inspector with manager-defined title and sections
   static Future<Map<String, dynamic>> assignTask({
     required int inspectorId,
-    required String title,
+    required String inspectionTitle, // Manager-defined inspection title
+    required String inspectionType,
+    required String equipmentTag,
     required String location,
-    String? equipmentId,
-    String? equipmentType,
-    String? scheduledDate,
-    String? notes,
+    required String dueDate,
+    required bool requireExternal,
+    required bool requireWeld,
+    required bool requireInternal,
+    required bool requireThickness,
+    List<String> initialConditions = const [],
   }) async {
     try {
       final token = await AuthService.getToken();
@@ -21,12 +25,17 @@ class ManagerService {
         url: '$baseUrl/assign-task',
         body: {
           'inspector_id': inspectorId,
-          'title': title,
+          'title': inspectionTitle, // Manager-defined title
+          'inspection_type': inspectionType,
+          'equipment_tag': equipmentTag,
           'location': location,
-          'equipment_id': equipmentId,
-          'equipment_type': equipmentType,
-          'scheduled_date': scheduledDate,
-          'notes': notes,
+          'due_date': dueDate,
+          'require_external': requireExternal,
+          'require_weld': requireWeld,
+          'require_internal': requireInternal,
+          'require_thickness': requireThickness,
+          'initial_conditions': initialConditions.join(','),
+          'status': 'scheduled',
         },
         headers: {
           'Content-Type': 'application/json',
@@ -186,6 +195,72 @@ class ManagerService {
       );
     } catch (e) {
       throw Exception('Failed to load inspector stats: $e');
+    }
+  }
+
+  // Reassign a rejected inspection to same or different inspector
+  static Future<Map<String, dynamic>> reassignInspection(
+    int inspectionId,
+    int inspectorId, {
+    String? notes,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await ApiService.post(
+        url: '$baseUrl/reassign/inspection?inspection_id=$inspectionId',
+        body: {
+          'inspector_id': inspectorId,
+          'notes': notes,
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return response;
+    } catch (e) {
+      throw Exception('Failed to reassign inspection: $e');
+    }
+  }
+
+  // Update inspection details (Area and Equipment Type)
+  static Future<Map<String, dynamic>> updateInspectionDetails({
+    required int inspectionId,
+    required String area,
+    required String equipmentType,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await ApiService.post(
+        url: '$baseUrl/update/inspection?inspection_id=$inspectionId',
+        body: {
+          'location': area,
+          'inspection_type': equipmentType,
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return response;
+    } catch (e) {
+      throw Exception('Failed to update inspection: $e');
+    }
+  }
+
+  // Get list of locations
+  static Future<List<dynamic>> getLocations() async {
+    try {
+      final token = await AuthService.getToken();
+      return await ApiService.getList(
+        url: '${ApiConfig.baseUrl}/api/locations',  // Correct endpoint for locations
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (e) {
+      throw Exception('Failed to load locations: $e');
     }
   }
 }

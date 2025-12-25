@@ -313,7 +313,7 @@ class ProfileService {
     final response = await http.get(
       // Note: This endpoint is in manager.py, but we are keeping user-related services here for now.
       // In a larger app, this might move to a dedicated ManagerService.
-      Uri.parse('$baseUrl/inspectors?period=$period'),
+      Uri.parse('$baseUrl/manager/inspectors?period=$period'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',

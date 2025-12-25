@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/manager_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/collapsible_sidebar.dart';
 
 class InspectorManagementPage extends StatefulWidget {
   const InspectorManagementPage({super.key});
@@ -9,16 +11,33 @@ class InspectorManagementPage extends StatefulWidget {
   State<InspectorManagementPage> createState() => _InspectorManagementPageState();
 }
 
-class _InspectorManagementPageState extends State<InspectorManagementPage> {
+class _InspectorManagementPageState extends State<InspectorManagementPage> with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _inspectors = [];
   bool _isLoading = true;
   String? _error;
-  String _sortBy = 'name'; // name, total_tasks, completion_rate, approval_rate
+  String _sortBy = 'name';
+  
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
     _loadInspectors();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadInspectors() async {
@@ -34,6 +53,7 @@ class _InspectorManagementPageState extends State<InspectorManagementPage> {
         _sortInspectors();
         _isLoading = false;
       });
+      _animationController.forward();
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -60,302 +80,271 @@ class _InspectorManagementPageState extends State<InspectorManagementPage> {
   }
 
   Color _getPerformanceColor(double rate) {
-    if (rate >= 80) return Colors.green;
-    if (rate >= 60) return Colors.orange;
-    return Colors.red;
+    if (rate >= 80) return AppTheme.statusCompleted;
+    if (rate >= 60) return AppTheme.accentYellow;
+    return AppTheme.statusRejected;
+  }
+
+  IconData _getPerformanceIcon(double rate) {
+    if (rate >= 80) return Icons.trending_up_rounded;
+    if (rate >= 60) return Icons.trending_flat_rounded;
+    return Icons.trending_down_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Inspector Management'),
-        backgroundColor: AppTheme.managerPrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
+      backgroundColor: AppTheme.backgroundGrey,
+      body: Row(
+        children: [
+          _buildSidebar(),
+          Expanded(
+            child: Column(
+              children: [
+                _buildTopBar(),
+                Expanded(
+                  child: _isLoading
+                      ? _buildLoading()
+                      : _error != null
+                          ? _buildError()
+                          : _buildContent(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return const CollapsibleSidebar(currentPage: 'inspector_management');
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon with gradient background
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primaryRed.withOpacity(0.15),
+                  AppTheme.primaryRed.withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.primaryRed.withOpacity(0.1),
+              ),
+            ),
+            child: Icon(
+              Icons.people_alt_rounded,
+              color: AppTheme.primaryRed,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Inspector Management',
+                      style: GoogleFonts.inter(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    if (!_isLoading)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppTheme.primaryRed,
+                              AppTheme.primaryRed.withOpacity(0.8),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryRed.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '${_inspectors.length}',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Monitor inspector performance and workload',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Action buttons with modern styling
+          _buildActionButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Refresh Data',
             onPressed: _loadInspectors,
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadInspectors,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              : Column(
-                  children: [
-                    // Sort options
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      color: Colors.grey[100],
-                      child: Row(
-                        children: [
-                          const Text('Sort by:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 16),
-                          DropdownButton<String>(
-                            value: _sortBy,
-                            items: const [
-                              DropdownMenuItem(value: 'name', child: Text('Name')),
-                              DropdownMenuItem(value: 'total_tasks', child: Text('Total Tasks')),
-                              DropdownMenuItem(value: 'completion_rate', child: Text('Completion Rate')),
-                              DropdownMenuItem(value: 'approval_rate', child: Text('Approval Rate')),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _sortBy = value;
-                                  _sortInspectors();
-                                });
-                              }
-                            },
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${_inspectors.length} Inspectors',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Inspector list
-                    Expanded(
-                      child: _inspectors.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'No inspectors found',
-                                style: TextStyle(fontSize: 16, color: Colors.grey),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: _inspectors.length,
-                              itemBuilder: (context, index) {
-                                final inspector = _inspectors[index];
-                                return _buildInspectorCard(inspector);
-                              },
-                            ),
-                    ),
-                  ],
-                ),
     );
   }
 
-  Widget _buildInspectorCard(Map<String, dynamic> inspector) {
-    final completionRate = inspector['completion_rate'] as num;
-    final approvalRate = inspector['approval_rate'] as num;
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _buildActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(left: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryRed.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppTheme.primaryRed.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(
+              icon,
+              color: AppTheme.primaryRed,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoading() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: AppTheme.primaryRed,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Loading inspectors...',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: AppTheme.softShadow,
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: AppTheme.managerPrimary,
-                  child: Text(
-                  inspector['username'].toString()[0].toUpperCase(),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        inspector['username'],
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        inspector['email'],
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Performance indicator
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _getPerformanceColor(completionRate.toDouble()).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _getPerformanceColor(completionRate.toDouble()),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.trending_up,
-                        size: 16,
-                        color: _getPerformanceColor(completionRate.toDouble()),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${completionRate.toStringAsFixed(1)}%',
-                        style: TextStyle(
-                          color: _getPerformanceColor(completionRate.toDouble()),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 40,
+                color: Color(0xFFDC2626),
+              ),
             ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            
-            // Task Statistics
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatItem(
-                    'Total Tasks',
-                    inspector['total_tasks'].toString(),
-                    Icons.assignment,
-                    Colors.blue,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    'Completed',
-                    inspector['completed_tasks'].toString(),
-                    Icons.check_circle,
-                    Colors.green,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    'Pending',
-                    inspector['pending_review'].toString(),
-                    Icons.pending,
-                    Colors.orange,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    'Scheduled',
-                    inspector['scheduled'].toString(),
-                    Icons.schedule,
-                    Colors.blue,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Performance Metrics
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Completion Rate',
-                            style: TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                          Text(
-                            '${completionRate.toStringAsFixed(1)}%',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: _getPerformanceColor(completionRate.toDouble()),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: completionRate / 100,
-                        backgroundColor: Colors.grey[200],
-                        valueColor: AlwaysStoppedAnimation(
-                          _getPerformanceColor(completionRate.toDouble()),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Approval Rate',
-                            style: TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                          Text(
-                            '${approvalRate.toStringAsFixed(1)}%',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: _getPerformanceColor(approvalRate.toDouble()),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: approvalRate / 100,
-                        backgroundColor: Colors.grey[200],
-                        valueColor: AlwaysStoppedAnimation(
-                          _getPerformanceColor(approvalRate.toDouble()),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            
-            // Reports info
+            const SizedBox(height: 24),
             Text(
-              'Reports: ${inspector['approved_reports']}/${inspector['total_reports']} approved',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
+              'Failed to load inspectors',
+              style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadInspectors,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryRed,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],
@@ -364,27 +353,420 @@ class _InspectorManagementPageState extends State<InspectorManagementPage> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
-    return Column(
-      children: [
-        Icon(icon, size: 24, color: color),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
+  Widget _buildContent() {
+    if (_inspectors.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryRed.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Icon(
+                Icons.people_outline_rounded,
+                size: 56,
+                color: AppTheme.primaryRed.withOpacity(0.3),
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'No inspectors found',
+              style: GoogleFonts.inter(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Inspectors will appear here once registered',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Column(
+        children: [
+          _buildSortSection(),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(32, 24, 32, 32),
+              itemCount: _inspectors.length,
+              itemBuilder: (context, index) => _buildInspectorCard(_inspectors[index], index),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSortSection() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(32, 20, 32, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: AppTheme.divider.withOpacity(0.5),
+            width: 1,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Colors.grey,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sort_rounded,
+            size: 20,
+            color: AppTheme.textSecondary,
           ),
-          textAlign: TextAlign.center,
+          const SizedBox(width: 8),
+          Text(
+            'Sort by:',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                {'key': 'name', 'label': 'Name', 'icon': Icons.person_rounded},
+                {'key': 'total_tasks', 'label': 'Total Tasks', 'icon': Icons.assignment_rounded},
+                {'key': 'completion_rate', 'label': 'Completion', 'icon': Icons.check_circle_rounded},
+                {'key': 'approval_rate', 'label': 'Approval', 'icon': Icons.verified_rounded},
+              ].map((item) {
+                final isSelected = _sortBy == item['key'];
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _sortBy = item['key'] as String;
+                      _sortInspectors();
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.primaryRed
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primaryRed
+                            : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          item['icon'] as IconData,
+                          size: 16,
+                          color: isSelected
+                              ? Colors.white
+                              : AppTheme.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          item['label'] as String,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: isSelected
+                                ? Colors.white
+                                : AppTheme.textPrimary,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInspectorCard(Map<String, dynamic> inspector, int index) {
+    final completionRate = (inspector['completion_rate'] as num).toDouble();
+    final approvalRate = (inspector['approval_rate'] as num).toDouble();
+    final totalTasks = inspector['total_tasks'] as int;
+    final completedTasks = inspector['completed_tasks'] as int;
+    final pendingReview = inspector['pending_review'] as int;
+    final scheduled = inspector['scheduled'] as int;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+          color: AppTheme.divider.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            // Future: Navigate to inspector detail page
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                // Header Row
+                Row(
+                  children: [
+                    // Avatar
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primaryRed,
+                            AppTheme.primaryRed.withOpacity(0.7),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryRed.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          inspector['username'][0].toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Name & Email
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            inspector['username'],
+                            style: GoogleFonts.inter(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            inspector['email'],
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Performance Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _getPerformanceColor(completionRate).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _getPerformanceColor(completionRate).withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getPerformanceIcon(completionRate),
+                            size: 16,
+                            color: _getPerformanceColor(completionRate),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${completionRate.toStringAsFixed(0)}%',
+                            style: GoogleFonts.inter(
+                              color: _getPerformanceColor(completionRate),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Stats Grid
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildStatItem(
+                        Icons.assignment_rounded,
+                        'Total',
+                        totalTasks.toString(),
+                        AppTheme.textPrimary,
+                      ),
+                      _buildStatItem(
+                        Icons.check_circle_rounded,
+                        'Completed',
+                        completedTasks.toString(),
+                        AppTheme.statusCompleted,
+                      ),
+                      _buildStatItem(
+                        Icons.hourglass_top_rounded,
+                        'Review',
+                        pendingReview.toString(),
+                        AppTheme.statusPendingReview,
+                      ),
+                      _buildStatItem(
+                        Icons.schedule_rounded,
+                        'Scheduled',
+                        scheduled.toString(),
+                        AppTheme.statusScheduled,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Progress Bars
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildProgressIndicator(
+                        'Completion',
+                        completionRate,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: _buildProgressIndicator(
+                        'Approval',
+                        approvalRate,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String label, String value, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressIndicator(String label, double rate) {
+    final color = _getPerformanceColor(rate);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '${rate.toStringAsFixed(0)}%',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: rate / 100,
+            backgroundColor: const Color(0xFFE2E8F0),
+            valueColor: AlwaysStoppedAnimation(color),
+            minHeight: 6,
+          ),
         ),
       ],
     );

@@ -65,7 +65,7 @@ app.include_router(manager_router, prefix="/manager", tags=["Manager"])
 app.include_router(messaging_router, prefix="/messaging", tags=["Messaging & Reminders"])
 app.include_router(locations_router, prefix="/api", tags=["Locations"])
 app.include_router(profile_router, tags=["Profile Management"])
-app.include_router(report_router, tags=["Report Management"])
+app.include_router(report_router, prefix="/report", tags=["Report Management"])
 
 @app.get("/health")
 def health():

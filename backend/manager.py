@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
-from typing import List
+from typing import List, Optional
 from db import get_db
 from auth import get_current_user
 from pydantic import BaseModel
@@ -12,12 +12,17 @@ router = APIRouter()
 # Request models
 class AssignTaskRequest(BaseModel):
     inspector_id: int
-    title: str
+    title: str = None  # Manager-defined inspection title
+    inspection_type: str
     location: str
-    equipment_id: str = None  # Equipment Tag Number
-    equipment_type: str = None  # Equipment Type/Description
-    scheduled_date: str = None
+    equipment_tag: str
+    due_date: str
+    require_external: bool = True
+    require_weld: bool = False
+    require_internal: bool = False
+    require_thickness: bool = False
     notes: str = None
+    initial_conditions: str = None  # Comma-separated list of conditions
 
 class ApproveInspectionRequest(BaseModel):
     inspection_id: int
@@ -68,6 +73,9 @@ def assign_task(
 ):
     """Assign inspection task to an inspector - MANAGERS ONLY"""
     
+    # Import helper functions for ID generation
+    from models_helpers import generate_inspection_id, generate_report_number
+    
     # Verify inspector exists
     inspector = db.query(models.User).filter(
         models.User.id == request.inspector_id,
@@ -79,25 +87,37 @@ def assign_task(
     
     # Parse scheduled date
     scheduled_date_obj = None
-    if request.scheduled_date:
+    if request.due_date:
         try:
-            scheduled_date_obj = datetime.fromisoformat(request.scheduled_date.replace('Z', '+00:00')).date()
+            scheduled_date_obj = datetime.fromisoformat(request.due_date.replace('Z', '+00:00')).date()
         except:
-            scheduled_date_obj = datetime.strptime(request.scheduled_date, '%Y-%m-%d').date()
+            scheduled_date_obj = datetime.strptime(request.due_date, '%Y-%m-%d').date()
     
-    # Create inspection
+    # AUTO-GENERATE IDs
+    inspection_id_display = generate_inspection_id(db)
+    report_number_display = generate_report_number(db)
+    
+    # Create inspection with manager-defined title and auto-generated IDs
     new_inspection = models.Inspection(
-        title=request.title,
+        inspection_id_display=inspection_id_display,  # NEW
+        report_number=report_number_display,  # NEW
+        title=request.title if request.title else request.inspection_type,
         location=request.location,
-        equipment_id=request.equipment_id,
-        equipment_type=request.equipment_type,
+        area=request.location,  # Also store in area field
+        equipment_id=request.equipment_tag,
+        equipment_type=request.inspection_type,  # Use actual type from request
         inspector_id=request.inspector_id,
         status=models.InspectionStatusEnum.scheduled,
         scheduled_date=scheduled_date_obj,
+        require_external=request.require_external,
+        require_weld=request.require_weld,
+        require_internal=request.require_internal,
+        require_thickness=request.require_thickness,
         notes=request.notes,
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
+
     
     db.add(new_inspection)
     db.commit()
@@ -106,6 +126,8 @@ def assign_task(
     return {
         "message": "Task successfully assigned",
         "inspection_id": new_inspection.id,
+        "inspection_id_display": inspection_id_display,  # NEW
+        "report_number": report_number_display,  # NEW
         "inspector": inspector.username,
         "status": new_inspection.status.value
     }
@@ -145,8 +167,11 @@ def get_pending_inspections(
     
     return [{
         "id": insp.id,
+        "inspection_id_display": insp.inspection_id_display,  # For Edit Dialog
         "title": insp.title,
         "location": insp.location,
+        "equipment_tag": insp.equipment_id,  # For Edit Dialog
+        "inspection_type": insp.equipment_type,  # For Edit Dialog
         "status": insp.status.value,
         "inspector": insp.inspector.username if insp.inspector else "Unassigned",
         "inspector_id": insp.inspector_id,
@@ -183,11 +208,15 @@ def get_pending_reports(
         "created_at": report.created_at.isoformat()
     } for report in reports]
 
+# Pydantic model for approve request via query params AND body
+class ApproveInspectionBodyRequest(BaseModel):
+    notes: Optional[str] = None
+
 # MANAGER-ONLY: Approve inspection
 @router.post("/approve/inspection", dependencies=[Depends(require_manager)])
 def approve_inspection(
-    inspection_id: int,
-    notes: str = None,
+    inspection_id: int,  # Query param
+    request: ApproveInspectionBodyRequest = None,  # Optional body
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -210,7 +239,8 @@ def approve_inspection(
     if not inspection.completion_date:
         inspection.completion_date = date.today()
     
-    # Add manager notes if provided
+    # Add manager notes if provided (from body)
+    notes = request.notes if request else None
     if notes:
         approval_note = f"\n[Manager Approved by {current_user.username} on {date.today().isoformat()}]: {notes}"
         inspection.notes = (inspection.notes or "") + approval_note
@@ -234,12 +264,16 @@ def approve_inspection(
             detail=f"Failed to approve inspection: {str(e)}"
         )
 
+# Pydantic model for reject request body
+class RejectInspectionBodyRequest(BaseModel):
+    rejection_reason: str
+    rejection_feedback: Optional[str] = None
+
 # MANAGER-ONLY: Reject inspection and require revision
 @router.post("/reject/inspection", dependencies=[Depends(require_manager)])
 def reject_inspection(
-    inspection_id: int,
-    rejection_reason: str,
-    rejection_feedback: str = None,
+    inspection_id: int,  # Query param
+    request: RejectInspectionBodyRequest,  # Body params
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -257,7 +291,10 @@ def reject_inspection(
             detail="Only inspections pending review can be rejected"
         )
     
-    # Update inspection with rejection details
+    # Update inspection with rejection details (from body)
+    rejection_reason = request.rejection_reason
+    rejection_feedback = request.rejection_feedback
+    
     inspection.status = models.InspectionStatusEnum.rejected
     inspection.rejection_reason = rejection_reason
     inspection.rejection_feedback = rejection_feedback
@@ -288,6 +325,80 @@ def reject_inspection(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to reject inspection: {str(e)}"
         )
+
+# Pydantic model for reassign request body
+class ReassignInspectionRequest(BaseModel):
+    inspector_id: int
+    notes: Optional[str] = None
+
+# MANAGER-ONLY: Reassign a rejected inspection to same or different inspector
+@router.post("/reassign/inspection", dependencies=[Depends(require_manager)])
+def reassign_inspection(
+    inspection_id: int,  # Query param
+    request: ReassignInspectionRequest,  # Body params
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reassign a rejected inspection to an inspector - MANAGERS ONLY"""
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id
+    ).first()
+    
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    
+    if inspection.status != models.InspectionStatusEnum.rejected:
+        raise HTTPException(
+            status_code=400, 
+            detail="Only rejected inspections can be reassigned"
+        )
+    
+    # Verify new inspector exists
+    new_inspector = db.query(models.User).filter(
+        models.User.id == request.inspector_id,
+        models.User.role == models.RoleEnum.inspector
+    ).first()
+    
+    if not new_inspector:
+        raise HTTPException(status_code=404, detail="Inspector not found")
+    
+    # Store old inspector for logging
+    old_inspector_id = inspection.inspector_id
+    
+    # Update inspection
+    inspection.inspector_id = request.inspector_id
+    inspection.status = models.InspectionStatusEnum.scheduled  # Reset to scheduled
+    inspection.rejection_reason = None  # Clear rejection fields
+    inspection.rejection_feedback = None
+    inspection.updated_at = datetime.now()
+    
+    # Add reassignment note
+    reassign_note = f"\n[REASSIGNED by {current_user.username} on {date.today().isoformat()}]"
+    if old_inspector_id != request.inspector_id:
+        reassign_note += f"\nReassigned from inspector ID {old_inspector_id} to {new_inspector.username}"
+    else:
+        reassign_note += f"\nReassigned back to {new_inspector.username} for revision"
+    if request.notes:
+        reassign_note += f"\nNotes: {request.notes}"
+    inspection.notes = (inspection.notes or "") + reassign_note
+    
+    try:
+        db.commit()
+        db.refresh(inspection)
+        
+        return {
+            "message": f"Inspection reassigned to {new_inspector.username}",
+            "inspection_id": inspection.id,
+            "new_inspector": new_inspector.username,
+            "status": inspection.status.value
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reassign inspection: {str(e)}"
+        )
+
 
 # MANAGER-ONLY: Approve or reject report
 @router.post("/approve/report", dependencies=[Depends(require_manager)])
@@ -371,6 +482,7 @@ def get_inspectors(
         result.append({
             "id": insp.id,
             "username": insp.username,
+            "name": insp.username,
             "email": insp.email,
             "phone": insp.phone,
             "total_tasks": total_tasks,
@@ -433,3 +545,69 @@ def get_inspector_stats(
         "approved_reports": approved_reports,
         "approval_rate": round((approved_reports / total_reports * 100) if total_reports > 0 else 0, 1)
     }
+
+# Pydantic model for update inspection request
+class UpdateInspectionRequest(BaseModel):
+    location: str
+    inspection_type: str
+
+# Area-Equipment Type validation mapping
+AREA_EQUIPMENT_MAP = {
+    'Plant 1': ['Reactor', 'Pressure Vessel', 'Heat Exchanger'],
+    'Plant 2': ['Storage Tank', 'Tower', 'Pressure Vessel'],
+    'Utility Area': ['Heat Exchanger', 'Storage Tank'],
+    'Offsite Area': ['Storage Tank', 'Tower'],
+    'Process Area': ['Reactor', 'Pressure Vessel', 'Heat Exchanger', 'Tower'],
+}
+
+# MANAGER-ONLY: Update inspection details (Area and Equipment Type)
+@router.post("/update/inspection", dependencies=[Depends(require_manager)])
+def update_inspection(
+    inspection_id: int,  # Query param
+    request: UpdateInspectionRequest,  # Body params
+    db: Session = Depends(get_db)
+):
+    """Update inspection area and equipment type - MANAGERS ONLY"""
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id
+    ).first()
+    
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    
+    # Validate Area-Equipment Type combination
+    valid_equipment_types = AREA_EQUIPMENT_MAP.get(request.location, [])
+    if not valid_equipment_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid area: {request.location}"
+        )
+    
+    if request.inspection_type not in valid_equipment_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Equipment Type '{request.inspection_type}' is not valid for Area '{request.location}'. Valid types are: {', '.join(valid_equipment_types)}"
+        )
+    
+    # Update inspection
+    inspection.location = request.location
+    inspection.area = request.location  # Also update area field
+    inspection.equipment_type = request.inspection_type
+    inspection.updated_at = datetime.now()
+    
+    try:
+        db.commit()
+        db.refresh(inspection)
+        
+        return {
+            "message": "Inspection updated successfully",
+            "inspection_id": inspection.id,
+            "location": inspection.location,
+            "equipment_type": inspection.equipment_type
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update inspection: {str(e)}"
+        )

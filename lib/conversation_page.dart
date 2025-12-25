@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
+import 'widgets/collapsible_sidebar.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:io';
+// import 'dart:io'; // REMOVED for Web compatibility
+import 'services/messaging_service.dart';
+import 'services/auth_service.dart';
+import 'services/dashboard_service.dart';
+import 'services/manager_service.dart';
+import 'config/api_config.dart';
 
 class ConversationPage extends StatefulWidget {
-  final int? threadId;
+  final String? threadId;
   final String otherUserName;
   final int otherUserId;
   final String subject;
@@ -19,52 +26,59 @@ class ConversationPage extends StatefulWidget {
 
   @override
   State<ConversationPage> createState() => _ConversationPageState();
-
-
-
 }
 
 class _ConversationPageState extends State<ConversationPage> {
-    PlatformFile? _selectedFile;
+  PlatformFile? _selectedFile;
   List<dynamic> _messages = [];
   bool _isLoading = true;
+  String? _currentThreadId;
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  int? _selectedTaskToShare; // Inspection ID to link
+  String? _selectedTaskTitle;
 
   @override
   void initState() {
     super.initState();
+    _currentThreadId = widget.threadId; // string in backend
     _loadMessages();
   }
 
   Future<void> _loadMessages() async {
+    if (_currentThreadId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
     setState(() => _isLoading = true);
-    // TODO: Replace with real API call for conversation messages
-    // For now, mock messages for demonstration
-    await Future.delayed(const Duration(milliseconds: 300));
-    setState(() {
-      _messages = [
-        {
-          'id': 1,
-          'sender_id': widget.otherUserId,
-          'sender_name': widget.otherUserName,
-          'content': 'Hello! This is the start of our chat.',
-          'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
-          'is_sender': false,
-        },
-        {
-          'id': 2,
-          'sender_id': 0,
-          'sender_name': 'Me',
-          'content': 'Hi! Ready to discuss?',
-          'created_at': DateTime.now().toIso8601String(),
-          'is_sender': true,
-        },
-      ];
-      _isLoading = false;
+    try {
+      final msgs = await MessagingService.getThreadMessages(_currentThreadId!);
+      setState(() {
+        _messages = msgs;
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      // Handle error cleanly
+    }
+  }
+  
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
   List<dynamic> _groupMessagesByDate(List<dynamic> messages) {
+    // ... same logic usually ...
     final List<dynamic> grouped = [];
     String? lastDateLabel;
     final now = DateTime.now();
@@ -87,183 +101,463 @@ class _ConversationPageState extends State<ConversationPage> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty && _selectedFile == null) return;
+    if (text.isEmpty && _selectedFile == null && _selectedTaskToShare == null) return;
+    
+    // Construct content with embedded task link if selected
+    String finalContent = text;
+    if (_selectedTaskToShare != null) {
+      finalContent = '$finalContent\n[TASK:$_selectedTaskToShare:$_selectedTaskTitle]'.trim();
+    }
+
+    // Optimistic UI Update (optional, but tricky with real BE id needed for linking)
     setState(() => _isLoading = true);
-    // TODO: Replace with real sendMessage API call (with file upload)
-    await Future.delayed(const Duration(milliseconds: 300));
-    setState(() {
-      _messages.add({
-        'id': _messages.length + 1,
-        'sender_id': 0,
-        'sender_name': 'Me',
-        'content': text,
-        'created_at': DateTime.now().toIso8601String(),
-        'is_sender': true,
-        'attachment_url': _selectedFile != null ? _selectedFile!.path : null,
-        'attachment_type': _selectedFile != null && _selectedFile!.extension != null && ['jpg','jpeg','png','gif'].contains(_selectedFile!.extension!.toLowerCase()) ? 'image' : 'file',
-        'attachment_name': _selectedFile?.name,
-      });
-      _isLoading = false;
+
+    try {
+      // Prepare file bytes
+      List<int>? fileBytes;
+      if (_selectedFile != null) {
+        if (_selectedFile!.bytes != null) {
+          fileBytes = _selectedFile!.bytes;
+        }
+        // NOTE: For Web, we rely on bytes. For Native without bytes, we would need dart:io but we removed it.
+        // FilePicker withData: true ensures bytes are present.
+      }
+
+      await MessagingService.sendMessage(
+        receiverId: widget.otherUserId,
+        content: finalContent.isEmpty ? 'Sent an attachment' : finalContent,
+        subject: widget.subject,
+        inspectionId: null, // Keep in current thread, do not fork to inspection thread
+        attachmentBytes: fileBytes,
+        attachmentName: _selectedFile?.name,
+      );
+
       _controller.clear();
-      _selectedFile = null;
-    });
+      setState(() {
+        _selectedFile = null;
+        _selectedTaskToShare = null;
+        _selectedTaskTitle = null;
+      });
+
+      // Reload messages
+      if (_currentThreadId != null) {
+        await _loadMessages();
+      } else {
+        Navigator.pop(context, true);
+      }
+      
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      setState(() => _isLoading = false);
+    }
+  }
+// ...
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        withData: true, // Crucial for Web to get bytes
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'],
+      );
+      
+      if (result != null) {
+        setState(() {
+          _selectedFile = result.files.first;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking file: $e')));
+    }
   }
 
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(withData: false);
-    if (result != null && result.files.isNotEmpty) {
-      setState(() {
-        _selectedFile = result.files.first;
-      });
+  Future<void> _shareTask() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share a Task'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: FutureBuilder<List<dynamic>>(
+            future: DashboardService.getMyTasks(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Text('Error loading tasks: ${snapshot.error}');
+              }
+              final tasks = snapshot.data ?? [];
+              if (tasks.isEmpty) {
+                return const Text('No tasks found.');
+              }
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: tasks.length,
+                itemBuilder: (context, index) {
+                  final task = tasks[index];
+                  return ListTile(
+                    leading: const Icon(Icons.assignment),
+                    title: Text(task['title'] ?? 'Inspection #${task['id']}'),
+                    subtitle: Text(task['location'] ?? 'No location'),
+                    onTap: () {
+                      setState(() {
+                        _selectedTaskToShare = task['id'];
+                        _selectedTaskTitle = task['title'] ?? 'Inspection #${task['id']}';
+                      });
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessages() {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator(color: AppTheme.primaryRed));
     }
+
+    final groupedMessages = _groupMessagesByDate(_messages);
+    
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(24),
+      itemCount: groupedMessages.length,
+      itemBuilder: (context, index) {
+        final item = groupedMessages[index];
+        if (item is Map && item.containsKey('_dateLabel')) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              children: [
+                Expanded(child: Divider(color: AppTheme.divider)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(item['_dateLabel'], style: GoogleFonts.inter(color: AppTheme.textMuted, fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+                Expanded(child: Divider(color: AppTheme.divider)),
+              ],
+            ),
+          );
+        }
+        
+        final msg = item;
+        final isMe = msg['is_sender'] == true;
+        
+        // Parse embedded task link
+        String content = msg['content'] ?? '';
+        String? linkedTaskId;
+        String? linkedTaskTitle;
+        final taskMatch = RegExp(r'\[TASK:(\d+):(.+?)\]').firstMatch(content);
+        if (taskMatch != null) {
+          linkedTaskId = taskMatch.group(1);
+          linkedTaskTitle = taskMatch.group(2);
+          content = content.replaceAll(taskMatch.group(0)!, '').trim();
+        }
+        
+        return Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.5),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isMe ? AppTheme.primaryRed : Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isMe ? 16 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 16),
+              ),
+              boxShadow: AppTheme.softShadow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Linked Task from Content Embedding OR DB
+                if (linkedTaskId != null || msg['inspection_id'] != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: isMe ? null : Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                         Icon(Icons.assignment_rounded, size: 20, color: isMe ? Colors.white : AppTheme.primaryRed),
+                         const SizedBox(width: 10),
+                         Expanded(
+                           child: Column(
+                             crossAxisAlignment: CrossAxisAlignment.start,
+                             children: [
+                               Text(
+                                 'Linked Task',
+                                 style: GoogleFonts.inter(fontSize: 10, color: isMe ? Colors.white70 : AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                               ),
+                               Text(
+                                 linkedTaskTitle ?? msg['inspection_title'] ?? 'Inspection #${linkedTaskId ?? msg['inspection_id']}',
+                                 style: GoogleFonts.inter(fontSize: 14, color: isMe ? Colors.white : AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                               ),
+                             ],
+                           ),
+                         )
+                      ],
+                    ),
+                  ),
+
+                // Image Attachment
+                if (msg['attachment_url'] != null && (msg['attachment_type'] == 'image')) ...[
+                   Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        msg['attachment_url'].startsWith('http') ? msg['attachment_url'] : '${ApiConfig.baseUrl}/${msg['attachment_url']}',
+                        width: 200, 
+                        height: 150, 
+                        fit: BoxFit.cover,
+                        errorBuilder: (c,e,s) => Container(width: 200, height: 100, color: Colors.grey[300], child: Icon(Icons.broken_image)),
+                      ),
+                    ),
+                  )
+                ] else if (msg['attachment_url'] != null) ...[
+                  // File Attachment
+                   Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (isMe ? Colors.white : AppTheme.backgroundGrey).withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.insert_drive_file_rounded, size: 20, color: isMe ? Colors.white70 : AppTheme.textSecondary),
+                        const SizedBox(width: 8),
+                        Flexible(child: Text(msg['attachment_name'] ?? 'File', style: GoogleFonts.inter(fontSize: 12, color: isMe ? Colors.white70 : AppTheme.textSecondary))),
+                      ],
+                    ),
+                  )
+                ],
+
+                if (content.isNotEmpty)
+                  Text(
+                    content,
+                    style: GoogleFonts.inter(fontSize: 14, color: isMe ? Colors.white : AppTheme.textPrimary, height: 1.5),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatTime(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.parse(iso).toLocal();
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:${dt.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2))],
+      ),
+      child: Column(
+        children: [
+          // Selected Attachment Indicator
+          if (_selectedFile != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryRed.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryRed.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.attach_file_rounded, color: AppTheme.primaryRed, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_selectedFile!.name, style: GoogleFonts.inter(fontSize: 13), overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, size: 18, color: AppTheme.textMuted),
+                    onPressed: () => setState(() => _selectedFile = null),
+                  ),
+                ],
+              ),
+            ),
+            
+          // Selected Task Indicator
+          if (_selectedTaskToShare != null)
+             Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.accentYellow.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.accentYellow),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.link_rounded, color: AppTheme.accentYellow, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Sharing: $_selectedTaskTitle', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, size: 18, color: AppTheme.textMuted),
+                    onPressed: () => setState(() { _selectedTaskToShare = null; _selectedTaskTitle = null; }),
+                  ),
+                ],
+              ),
+            ),
+
+          Row(
+            children: [
+              // Attach File
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.attach_file_rounded, color: AppTheme.textSecondary),
+                  onPressed: _pickFile,
+                  tooltip: 'Attach File',
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Share Task
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.assignment_add, color: AppTheme.textSecondary),
+                  onPressed: _shareTask,
+                  tooltip: 'Share Task',
+                ),
+              ),
+              
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    hintStyle: GoogleFonts.inter(color: AppTheme.textMuted),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    filled: true,
+                    fillColor: const Color(0xFFF1F5F9),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: AppTheme.coloredShadow(AppTheme.primaryRed),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.send_rounded, color: Colors.white),
+                  onPressed: _sendMessage,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return const CollapsibleSidebar(
+      currentPage: 'messages',
+      isMainPage: false, // Conversation is a sub-page of Messages
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.primaryRed, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.subject.isNotEmpty ? widget.subject : 'Conversation',
+                  style: GoogleFonts.inter(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Chat with ${widget.otherUserName}',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.otherUserName),
-        backgroundColor: AppTheme.managerPrimary,
-      ),
-      body: Column(
+      backgroundColor: AppTheme.backgroundGrey,
+      body: Row(
         children: [
+          _buildSidebar(),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    reverse: false,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _groupMessagesByDate(_messages).length,
-                    itemBuilder: (context, index) {
-                      final item = _groupMessagesByDate(_messages)[index];
-                      if (item is Map && item.containsKey('_dateLabel')) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Row(
-                            children: [
-                              Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: Text(
-                                  item['_dateLabel'],
-                                  style: TextStyle(
-                                    color: Colors.grey.shade700,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
-                            ],
-                          ),
-                        );
-                      }
-                      final msg = item;
-                      final isMe = msg['is_sender'] == true;
-                      return Align(
-                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isMe ? Colors.green.shade100 : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (msg['attachment_url'] != null && msg['attachment_type'] == 'image')
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Image.file(
-                                    File(msg['attachment_url']),
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              if (msg['attachment_url'] != null && msg['attachment_type'] == 'file')
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.insert_drive_file, size: 20),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          msg['attachment_name'] ?? 'File',
-                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              if ((msg['content'] ?? '').isNotEmpty)
-                                Text(msg['content'] ?? '', style: const TextStyle(fontSize: 15)),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            color: Colors.grey.shade100,
-            child: Row(
+            child: Column(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file, color: Colors.blueGrey),
-                  onPressed: _pickFile,
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _controller,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: InputBorder.none,
-                        ),
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
-                      if (_selectedFile != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Row(
-                            children: [
-                              if (_selectedFile!.extension != null && ['jpg','jpeg','png','gif'].contains(_selectedFile!.extension!.toLowerCase()))
-                                Image.file(
-                                  File(_selectedFile!.path!),
-                                  width: 48,
-                                  height: 48,
-                                  fit: BoxFit.cover,
-                                )
-                              else
-                                const Icon(Icons.insert_drive_file, size: 32),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _selectedFile!.name,
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () => setState(() => _selectedFile = null),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.green),
-                  onPressed: _sendMessage,
-                ),
+                _buildTopBar(),
+                Expanded(child: _buildMessages()),
+                _buildInputArea(),
               ],
             ),
           ),

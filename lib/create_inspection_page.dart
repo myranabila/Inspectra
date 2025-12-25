@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'widgets/location_dropdown.dart';
+import 'theme/app_theme.dart';
 
 class CreateInspectionPage extends StatefulWidget {
   const CreateInspectionPage({super.key});
@@ -48,7 +49,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${pickedFiles.length} images added'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppTheme.primaryRed,
           ),
         );
       }
@@ -82,7 +83,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Image from camera added'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppTheme.primaryRed,
           ),
         );
       }
@@ -127,7 +128,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please upload at least 1 image'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppTheme.accentYellow,
         ),
       );
       return;
@@ -148,7 +149,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
           content: Text(
             'Inspection created successfully! Waiting for Manager approval.',
           ),
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.primaryRed,
           duration: Duration(seconds: 3),
         ),
       );
@@ -174,7 +175,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create New Inspection'),
-        backgroundColor: Colors.green,
+        backgroundColor: AppTheme.primaryRed,
         foregroundColor: Colors.white,
       ),
       body: _isSubmitting
@@ -295,7 +296,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
                             icon: const Icon(Icons.photo_library),
                             label: const Text('Choose from Gallery'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
+                              backgroundColor: AppTheme.accentYellow,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                             ),
@@ -308,7 +309,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
                             icon: const Icon(Icons.camera_alt),
                             label: const Text('Take Photo'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
+                              backgroundColor: AppTheme.primaryRed,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                             ),
@@ -424,7 +425,7 @@ class _CreateInspectionPageState extends State<CreateInspectionPage> {
                       child: ElevatedButton(
                         onPressed: _submitInspection,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+                          backgroundColor: AppTheme.primaryRed,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           textStyle: const TextStyle(

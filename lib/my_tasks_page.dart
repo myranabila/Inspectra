@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'config/api_config.dart';
 import 'services/dashboard_service.dart';
 import 'services/messaging_service.dart';
 import 'theme/app_theme.dart';
 import 'inspection_workflow_page.dart';
+import 'widgets/collapsible_sidebar.dart';
+import 'utils/animations_config.dart';
 
 class MyTasksPage extends StatefulWidget {
   final TaskFilterUrgency? initialUrgencyFilter;
@@ -39,14 +44,13 @@ class _MyTasksPageState extends State<MyTasksPage> {
   @override
   void initState() {
     super.initState();
-    // Set initial filters from widget parameters
     if (widget.initialUrgencyFilter != null) {
       _urgencyFilter = widget.initialUrgencyFilter!;
-      _showFilters = true; // Show filters if preset
+      _showFilters = true;
     }
     if (widget.initialStatusFilter != null) {
       _selectedStatuses = widget.initialStatusFilter!;
-      _showFilters = true; // Show filters if preset
+      _showFilters = true;
     }
     _loadTasks();
   }
@@ -59,7 +63,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
 
     try {
       final tasks = await DashboardService.getMyTasks();
-
       setState(() {
         _tasks = tasks;
         _applyFilters();
@@ -76,7 +79,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
   void _applyFilters() {
     List<dynamic> filtered = List.from(_tasks);
 
-    // Search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((task) {
         final title = (task['title'] ?? '').toString().toLowerCase();
@@ -86,14 +88,19 @@ class _MyTasksPageState extends State<MyTasksPage> {
       }).toList();
     }
 
-    // Status filter
     if (_selectedStatuses.isNotEmpty) {
+      filtered = filtered.where((task) => _selectedStatuses.contains(task['status'])).toList();
+    }
+
+    // STRICT REQUIREMENT: Pending tasks show items that need inspector action (scheduled + rejected)
+    // Exclude pending_review (awaiting manager) and completed (approved, goes to history)
+    if (!widget.showAllInspections) {
       filtered = filtered.where((task) {
-        return _selectedStatuses.contains(task['status']);
+        final status = task['status'];
+        return status == 'scheduled' || status == 'rejected';
       }).toList();
     }
 
-    // Urgency filter
     if (_urgencyFilter != TaskFilterUrgency.all) {
       filtered = filtered.where((task) {
         final dueDate = _parseDate(task['scheduled_date']);
@@ -118,7 +125,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
       }).toList();
     }
 
-    // Sort
     switch (_sortBy) {
       case TaskSortBy.date:
         filtered.sort((a, b) {
@@ -131,30 +137,16 @@ class _MyTasksPageState extends State<MyTasksPage> {
         });
         break;
       case TaskSortBy.priority:
-        // Priority based on urgency
-        filtered.sort((a, b) {
-          final urgencyA = _getUrgencyLevel(a);
-          final urgencyB = _getUrgencyLevel(b);
-          return urgencyB.compareTo(urgencyA); // Higher urgency first
-        });
+        filtered.sort((a, b) => _getUrgencyLevel(b).compareTo(_getUrgencyLevel(a)));
         break;
       case TaskSortBy.status:
         filtered.sort((a, b) {
-          final statusOrder = {
-            'scheduled': 0,
-            'pending_review': 1,
-            'rejected': 2,
-            'completed': 3,
-          };
-          return (statusOrder[a['status']] ?? 4)
-              .compareTo(statusOrder[b['status']] ?? 4);
+          final statusOrder = {'scheduled': 0, 'pending_review': 1, 'rejected': 2, 'completed': 3};
+          return (statusOrder[a['status']] ?? 4).compareTo(statusOrder[b['status']] ?? 4);
         });
         break;
       case TaskSortBy.location:
-        filtered.sort((a, b) {
-          return (a['location'] ?? '').toString().compareTo(
-              (b['location'] ?? '').toString());
-        });
+        filtered.sort((a, b) => (a['location'] ?? '').toString().compareTo((b['location'] ?? '').toString()));
         break;
     }
 
@@ -175,16 +167,14 @@ class _MyTasksPageState extends State<MyTasksPage> {
   int _getUrgencyLevel(dynamic task) {
     final dueDate = _parseDate(task['scheduled_date']);
     if (dueDate == null) return 0;
-    
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final diff = dueDate.difference(today).inDays;
-
-    if (diff < 0) return 5; // Overdue - highest priority
-    if (diff == 0) return 4; // Today
-    if (diff == 1) return 3; // Tomorrow
-    if (diff <= 7) return 2; // This week
-    return 1; // Later
+    if (diff < 0) return 5;
+    if (diff == 0) return 4;
+    if (diff == 1) return 3;
+    if (diff <= 7) return 2;
+    return 1;
   }
 
   Map<String, List<dynamic>> _groupTasksByDate() {
@@ -204,7 +194,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
 
     for (var task in _filteredTasks) {
       final dueDate = _parseDate(task['scheduled_date']);
-      
       if (dueDate == null) {
         grouped['No Due Date']!.add(task);
       } else if (dueDate.isBefore(today)) {
@@ -219,41 +208,8 @@ class _MyTasksPageState extends State<MyTasksPage> {
         grouped['Later']!.add(task);
       }
     }
-
-    // Remove empty groups
     grouped.removeWhere((key, value) => value.isEmpty);
-    
     return grouped;
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'scheduled':
-        return Colors.blue;
-      case 'pending_review':
-        return Colors.purple;
-      case 'rejected':
-        return Colors.red;
-      case 'completed':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'scheduled':
-        return Icons.schedule;
-      case 'pending_review':
-        return Icons.pending;
-      case 'rejected':
-        return Icons.edit_note;
-      case 'completed':
-        return Icons.check_circle;
-      default:
-        return Icons.info;
-    }
   }
 
   Future<void> _setReminder(int inspectionId, String title) async {
@@ -266,30 +222,27 @@ class _MyTasksPageState extends State<MyTasksPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Set Reminder'),
+          title: Text('Set Reminder', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'For task: $title',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
+                Text('For task: $title', style: GoogleFonts.inter(fontSize: 14)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: titleController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Reminder Title',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: messageController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Message (optional)',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   maxLines: 2,
                 ),
@@ -303,40 +256,23 @@ class _MyTasksPageState extends State<MyTasksPage> {
                             context: context,
                             initialDate: DateTime.now(),
                             firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365),
-                            ),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
                           );
-                          if (date != null) {
-                            setDialogState(() => selectedDate = date);
-                          }
+                          if (date != null) setDialogState(() => selectedDate = date);
                         },
-                        icon: const Icon(Icons.calendar_today),
-                        label: Text(
-                          selectedDate != null
-                              ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}'
-                              : 'Select Date',
-                        ),
+                        icon: const Icon(Icons.calendar_today, size: 18),
+                        label: Text(selectedDate != null ? '${selectedDate!.day}/${selectedDate!.month}' : 'Date'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () async {
-                          final time = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.now(),
-                          );
-                          if (time != null) {
-                            setDialogState(() => selectedTime = time);
-                          }
+                          final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                          if (time != null) setDialogState(() => selectedTime = time);
                         },
-                        icon: const Icon(Icons.access_time),
-                        label: Text(
-                          selectedTime != null
-                              ? '${selectedTime!.hour}:${selectedTime!.minute.toString().padLeft(2, '0')}'
-                              : 'Select Time',
-                        ),
+                        icon: const Icon(Icons.access_time, size: 18),
+                        label: Text(selectedTime != null ? '${selectedTime!.hour}:${selectedTime!.minute}' : 'Time'),
                       ),
                     ),
                   ],
@@ -345,13 +281,11 @@ class _MyTasksPageState extends State<MyTasksPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Set Reminder'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryRed, foregroundColor: Colors.white),
+              child: const Text('Set'),
             ),
           ],
         ),
@@ -359,925 +293,656 @@ class _MyTasksPageState extends State<MyTasksPage> {
     );
 
     if (confirmed == true) {
-      if (titleController.text.trim().isEmpty) {
+      if (titleController.text.trim().isEmpty || selectedDate == null || selectedTime == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enter a reminder title'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please complete all fields'), backgroundColor: Colors.red));
         return;
       }
 
-      if (selectedDate == null || selectedTime == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select date and time'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final remindAt = DateTime(
-        selectedDate!.year,
-        selectedDate!.month,
-        selectedDate!.day,
-        selectedTime!.hour,
-        selectedTime!.minute,
-      );
-
+      final remindAt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
       try {
         await MessagingService.createReminder(
           inspectionId: inspectionId,
           title: titleController.text,
-          message: messageController.text.isNotEmpty
-              ? messageController.text
-              : null,
+          message: messageController.text.isNotEmpty ? messageController.text : null,
           remindAt: remindAt,
         );
-
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reminder set successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder set!'), backgroundColor: AppTheme.primaryRed));
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to set reminder: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final groupedTasks = _groupTasksByDate();
-    
     return Scaffold(
       backgroundColor: AppTheme.backgroundGrey,
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: AppTheme.inspectorPrimary,
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.assignment_turned_in, size: 48, color: Colors.white),
-                  SizedBox(height: 12),
-                  Text(
-                    'Inspector Menu',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.task_alt),
-              title: const Text('My Tasks'),
-              selected: true,
-              selectedTileColor: Colors.blue.shade50,
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('History'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/history');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.message),
-              title: const Text('Messages'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/messages');
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text('Logout', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-              },
-            ),
-          ],
-        ),
-      ),
-      appBar: AppBar(
-        elevation: 0,
-        title: const Text(
-          'My Tasks',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
-        ),
-        backgroundColor: AppTheme.inspectorPrimary,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: Icon(_showFilters ? Icons.filter_alt : Icons.filter_alt_outlined),
-            onPressed: () {
-              setState(() {
-                _showFilters = !_showFilters;
-              });
-            },
-            tooltip: 'Filters',
-          ),
-          PopupMenuButton<TaskSortBy>(
-            icon: const Icon(Icons.sort),
-            tooltip: 'Sort by',
-            onSelected: (value) {
-              setState(() {
-                _sortBy = value;
-                _applyFilters();
-              });
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: TaskSortBy.date,
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today, size: 18),
-                    SizedBox(width: 12),
-                    Text('Due Date'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: TaskSortBy.priority,
-                child: Row(
-                  children: [
-                    Icon(Icons.priority_high, size: 18),
-                    SizedBox(width: 12),
-                    Text('Priority'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: TaskSortBy.status,
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_outline, size: 18),
-                    SizedBox(width: 12),
-                    Text('Status'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: TaskSortBy.location,
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on, size: 18),
-                    SizedBox(width: 12),
-                    Text('Location'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
+      body: Row(
         children: [
-          // Search bar
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                  _applyFilters();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search tasks...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          setState(() {
-                            _searchQuery = '';
-                            _applyFilters();
-                          });
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                isDense: true,
-              ),
-            ),
-          ),
-          
-          // Filter chips
-          if (_showFilters)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Urgency filter
-                  const Text(
-                    'Urgency',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      FilterChip(
-                        label: const Text('All'),
-                        selected: _urgencyFilter == TaskFilterUrgency.all,
-                        onSelected: (selected) {
-                          setState(() {
-                            _urgencyFilter = TaskFilterUrgency.all;
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                      FilterChip(
-                        label: const Text('Overdue'),
-                        selected: _urgencyFilter == TaskFilterUrgency.overdue,
-                        onSelected: (selected) {
-                          setState(() {
-                            _urgencyFilter = TaskFilterUrgency.overdue;
-                            _applyFilters();
-                          });
-                        },
-                        avatar: const Icon(Icons.warning, size: 16),
-                      ),
-                      FilterChip(
-                        label: const Text('Today'),
-                        selected: _urgencyFilter == TaskFilterUrgency.today,
-                        onSelected: (selected) {
-                          setState(() {
-                            _urgencyFilter = TaskFilterUrgency.today;
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                      FilterChip(
-                        label: const Text('This Week'),
-                        selected: _urgencyFilter == TaskFilterUrgency.thisWeek,
-                        onSelected: (selected) {
-                          setState(() {
-                            _urgencyFilter = TaskFilterUrgency.thisWeek;
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                      FilterChip(
-                        label: const Text('Later'),
-                        selected: _urgencyFilter == TaskFilterUrgency.later,
-                        onSelected: (selected) {
-                          setState(() {
-                            _urgencyFilter = TaskFilterUrgency.later;
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // Status filter
-                  const Text(
-                    'Status',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      FilterChip(
-                        label: const Text('Scheduled'),
-                        selected: _selectedStatuses.contains('scheduled'),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedStatuses.add('scheduled');
-                            } else {
-                              _selectedStatuses.remove('scheduled');
-                            }
-                            _applyFilters();
-                          });
-                        },
-                        avatar: const Icon(Icons.schedule, size: 16),
-                      ),
-                      FilterChip(
-                        label: const Text('Pending Review'),
-                        selected: _selectedStatuses.contains('pending_review'),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedStatuses.add('pending_review');
-                            } else {
-                              _selectedStatuses.remove('pending_review');
-                            }
-                            _applyFilters();
-                          });
-                        },
-                        avatar: const Icon(Icons.pending, size: 16),
-                      ),
-                      FilterChip(
-                        label: const Text('Rejected'),
-                        selected: _selectedStatuses.contains('rejected'),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedStatuses.add('rejected');
-                            } else {
-                              _selectedStatuses.remove('rejected');
-                            }
-                            _applyFilters();
-                          });
-                        },
-                        avatar: const Icon(Icons.cancel, size: 16),
-                      ),
-                      FilterChip(
-                        label: const Text('Completed'),
-                        selected: _selectedStatuses.contains('completed'),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedStatuses.add('completed');
-                            } else {
-                              _selectedStatuses.remove('completed');
-                            }
-                            _applyFilters();
-                          });
-                        },
-                        avatar: const Icon(Icons.check_circle, size: 16),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // Clear filters button
-                  if (_selectedStatuses.isNotEmpty ||
-                      _urgencyFilter != TaskFilterUrgency.all ||
-                      _searchQuery.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _selectedStatuses.clear();
-                          _urgencyFilter = TaskFilterUrgency.all;
-                          _searchQuery = '';
-                          _applyFilters();
-                        });
-                      },
-                      icon: const Icon(Icons.clear_all, size: 18),
-                      label: const Text('Clear All Filters'),
-                    ),
-                ],
-              ),
-            ),
-          
-          // Task list
+          _buildSidebar(),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, size: 60, color: Colors.red),
-                        const SizedBox(height: 16),
-                        Text('Error: $_error'),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadTasks,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  )
-                : _tasks.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.assignment_outlined,
-                          size: 80,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No tasks assigned yet',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Your manager will assign tasks to you',
-                          style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                        ),
-                      ],
-                    ),
-                  )
-                : _filteredTasks.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.filter_alt_off,
-                          size: 80,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No tasks match your filters',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Try adjusting your filters',
-                          style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                        ),
-                      ],
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _loadTasks,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: groupedTasks.entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = groupedTasks.entries.elementAt(index);
-                        final groupName = entry.key;
-                        final groupTasks = entry.value;
-                        
-                        return _buildTaskGroup(groupName, groupTasks);
-                      },
-                    ),
-                  ),
+            child: Column(
+              children: [
+                _buildTopBar(),
+                Expanded(
+                  child: _isLoading 
+                      ? _buildLoadingState() 
+                      : _error != null 
+                          ? _buildErrorState() 
+                          : _buildContent(),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTaskGroup(String groupName, List<dynamic> tasks) {
-    Color groupColor;
-    IconData groupIcon;
-    
-    switch (groupName) {
-      case 'Overdue':
-        groupColor = Colors.red;
-        groupIcon = Icons.warning;
-        break;
-      case 'Today':
-        groupColor = Colors.orange;
-        groupIcon = Icons.today;
-        break;
-      case 'Tomorrow':
-        groupColor = Colors.blue;
-        groupIcon = Icons.event;
-        break;
-      case 'This Week':
-        groupColor = Colors.green;
-        groupIcon = Icons.date_range;
-        break;
-      default:
-        groupColor = Colors.grey;
-        groupIcon = Icons.schedule;
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSidebar() {
+    return const CollapsibleSidebar(currentPage: 'my_tasks');
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        children: [
+          // Icon with gradient background
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.inspectorPrimary.withOpacity(0.15), AppTheme.inspectorPrimary.withOpacity(0.05)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.inspectorPrimary.withOpacity(0.1)),
+            ),
+            child: Icon(Icons.task_alt_rounded, color: AppTheme.inspectorPrimary, size: 28),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('Pending Task', style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppTheme.textPrimary, letterSpacing: -0.5)),
+                    const SizedBox(width: 14),
+                    if (!_isLoading)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [AppTheme.inspectorPrimary, AppTheme.inspectorPrimary.withOpacity(0.8)]),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [BoxShadow(color: AppTheme.inspectorPrimary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
+                        ),
+                        child: Text('${_filteredTasks.length}', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text('View and manage your pending inspection tasks', style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+          // Action buttons with modern styling
+          _buildActionButton(
+            icon: _showFilters ? Icons.filter_alt_rounded : Icons.filter_alt_outlined,
+            tooltip: 'Toggle Filters',
+            isActive: _showFilters,
+            onPressed: () => setState(() => _showFilters = !_showFilters),
+          ),
+          const SizedBox(width: 8),
+          PopupMenuButton<TaskSortBy>(
+            icon: Icon(Icons.sort_rounded, color: AppTheme.textSecondary),
+            tooltip: 'Sort by',
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            offset: const Offset(0, 48),
+            onSelected: (value) => setState(() { _sortBy = value; _applyFilters(); }),
+            itemBuilder: (context) => [
+              PopupMenuItem(value: TaskSortBy.date, child: _buildSortItem(Icons.calendar_today_rounded, 'Due Date', _sortBy == TaskSortBy.date)),
+              PopupMenuItem(value: TaskSortBy.priority, child: _buildSortItem(Icons.priority_high_rounded, 'Priority', _sortBy == TaskSortBy.priority)),
+              PopupMenuItem(value: TaskSortBy.status, child: _buildSortItem(Icons.check_circle_outline_rounded, 'Status', _sortBy == TaskSortBy.status)),
+              PopupMenuItem(value: TaskSortBy.location, child: _buildSortItem(Icons.location_on_rounded, 'Location', _sortBy == TaskSortBy.location)),
+            ],
+          ),
+          const SizedBox(width: 8),
+          _buildActionButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Refresh Tasks',
+            onPressed: _loadTasks,
+            isPrimary: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({required IconData icon, required String tooltip, required VoidCallback onPressed, bool isActive = false, bool isPrimary = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isPrimary ? AppTheme.primaryRed.withOpacity(0.1) : (isActive ? AppTheme.primaryRed.withOpacity(0.1) : Colors.grey.shade50),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isPrimary || isActive ? AppTheme.primaryRed.withOpacity(0.2) : Colors.grey.shade200),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 20),
+        onPressed: onPressed,
+        tooltip: tooltip,
+        color: isPrimary || isActive ? AppTheme.primaryRed : AppTheme.textSecondary,
+      ),
+    );
+  }
+
+  Widget _buildSortItem(IconData icon, String label, bool isSelected) {
+    return Row(
       children: [
-        // Group header
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 12, top: 8),
-          child: Row(
+        Icon(icon, size: 18, color: isSelected ? AppTheme.primaryRed : AppTheme.textSecondary),
+        const SizedBox(width: 12),
+        Text(label, style: GoogleFonts.inter(fontSize: 14, color: isSelected ? AppTheme.primaryRed : AppTheme.textPrimary, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500)),
+        if (isSelected) ...[const Spacer(), Icon(Icons.check_rounded, size: 16, color: AppTheme.primaryRed)],
+      ],
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [AppTheme.primaryRed.withOpacity(0.1), AppTheme.primaryRed.withOpacity(0.05)]),
+              shape: BoxShape.circle,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: CircularProgressIndicator(strokeWidth: 3, color: AppTheme.primaryRed, strokeCap: StrokeCap.round),
+            ),
+          ),
+          const SizedBox(height: 28),
+          Text('Loading your tasks...', style: GoogleFonts.inter(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text('Please wait while we fetch your assignments', style: GoogleFonts.inter(color: AppTheme.textMuted, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(40),
+        margin: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 88, height: 88,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [const Color(0xFFFEE2E2), const Color(0xFFFECACA)]),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(Icons.error_outline_rounded, size: 44, color: Color(0xFFDC2626)),
+            ),
+            const SizedBox(height: 28),
+            Text('Unable to load tasks', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+            const SizedBox(height: 10),
+            Text(_error ?? 'Unknown error', style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textSecondary), textAlign: TextAlign.center),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: _loadTasks,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryRed,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_tasks.isEmpty) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(48),
+          margin: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: AppTheme.softShadow,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                width: 110, height: 110,
                 decoration: BoxDecoration(
-                  color: groupColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  gradient: LinearGradient(colors: [Colors.grey.shade100, Colors.grey.shade50]),
+                  borderRadius: BorderRadius.circular(28),
                 ),
-                child: Icon(groupIcon, size: 18, color: groupColor),
+                child: Icon(Icons.assignment_rounded, size: 52, color: Colors.grey.shade400),
               ),
-              const SizedBox(width: 12),
-              Text(
-                '$groupName (${tasks.length})',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: groupColor,
-                ),
+              const SizedBox(height: 28),
+              Text('No tasks assigned yet', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+              const SizedBox(height: 10),
+              Text('Tasks from your manager will appear here', style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 14)),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(color: AppTheme.primaryRed.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.info_outline_rounded, size: 16, color: AppTheme.primaryRed),
+                  const SizedBox(width: 8),
+                  Text('Check back later for new assignments', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.primaryRed, fontWeight: FontWeight.w500)),
+                ]),
               ),
             ],
           ),
         ),
-        
-        // Group tasks
+      );
+    }
+
+    final groupedTasks = _groupTasksByDate();
+
+    return Column(
+      children: [
+        // Enhanced search bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+                ),
+                child: TextField(
+                  onChanged: (value) { setState(() { _searchQuery = value; _applyFilters(); }); },
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks by title or location...',
+                    hintStyle: GoogleFonts.inter(color: AppTheme.textMuted, fontSize: 14),
+                    prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textMuted, size: 22),
+                    suffixIcon: _searchQuery.isNotEmpty 
+                        ? IconButton(icon: Icon(Icons.clear_rounded, color: AppTheme.textMuted, size: 20), onPressed: () { setState(() { _searchQuery = ''; _applyFilters(); }); })
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  ),
+                ),
+              ),
+              if (_showFilters) ...[const SizedBox(height: 20), _buildFilterChips()],
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadTasks,
+            color: AppTheme.primaryRed,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(36),
+              itemCount: groupedTasks.length,
+              itemBuilder: (context, index) {
+                final groupName = groupedTasks.keys.elementAt(index);
+                return _buildTaskGroup(groupName, groupedTasks[groupName]!);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilterChips() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Urgency:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: TaskFilterUrgency.values.map((u) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(u.name[0].toUpperCase() + u.name.substring(1)),
+                      selected: _urgencyFilter == u,
+                      onSelected: (val) { setState(() { _urgencyFilter = u; _applyFilters(); }); },
+                      selectedColor: AppTheme.primaryRed.withOpacity(0.2),
+                      checkmarkColor: AppTheme.primaryRed,
+                    ),
+                  )).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (widget.showAllInspections) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text('Status:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: ['scheduled', 'pending_review', 'rejected', 'completed'].map((s) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(s.replaceAll('_', ' ').toUpperCase()),
+                        selected: _selectedStatuses.contains(s),
+                        onSelected: (val) {
+                          setState(() { 
+                            if (val) {
+                              _selectedStatuses.add(s);
+                            } else {
+                              _selectedStatuses.remove(s);
+                            }
+                            _applyFilters();
+                          });
+                        },
+                        selectedColor: AppTheme.primaryRed.withOpacity(0.2),
+                        checkmarkColor: AppTheme.primaryRed,
+                      ),
+                    )).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTaskGroup(String groupName, List<dynamic> tasks) {
+    IconData groupIcon;
+    Color groupColor;
+    switch (groupName) {
+      case 'Overdue': groupIcon = Icons.warning_rounded; groupColor = AppTheme.statusRejected; break;
+      case 'Today': groupIcon = Icons.today_rounded; groupColor = AppTheme.primaryRed; break;
+      case 'Tomorrow': groupIcon = Icons.next_plan_rounded; groupColor = AppTheme.accentYellow; break;
+      case 'This Week': groupIcon = Icons.date_range_rounded; groupColor = AppTheme.statusScheduled; break;
+      default: groupIcon = Icons.calendar_month_rounded; groupColor = AppTheme.textMuted;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 20, top: 16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [groupColor.withOpacity(0.15), groupColor.withOpacity(0.05)]),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: groupColor.withOpacity(0.15)),
+                ),
+                child: Icon(groupIcon, size: 20, color: groupColor),
+              ),
+              const SizedBox(width: 16),
+              Text(groupName, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: groupColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text('${tasks.length}', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: groupColor)),
+              ),
+            ],
+          ),
+        ),
         ...tasks.map((task) => _buildTaskCard(task)),
-        
-        const SizedBox(height: 16),
+        const SizedBox(height: 28),
       ],
     );
   }
 
   Widget _buildTaskCard(dynamic task) {
     final status = task['status'] ?? 'scheduled';
-    final color = _getStatusColor(status);
+    final statusColor = AppTheme.getStatusColor(status);
     final isRejected = status == 'rejected';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: isRejected
-          ? RoundedRectangleBorder(
-              side: BorderSide(color: Colors.red, width: 2),
-              borderRadius: BorderRadius.circular(4),
-            )
-          : null,
-      child: InkWell(
-        onTap: () {
-          // Navigate to inspection workflow for scheduled or rejected tasks
-          if (status == 'scheduled' || status == 'rejected') {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => InspectionWorkflowPage(
-                  inspection: task,
-                ),
-              ),
-            );
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Rejection banner
-              if (isRejected) ...[
-                Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning, color: Colors.red, size: 20),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '⚠️ REVISION REQUIRED',
-                              style: TextStyle(
-                                color: Colors.red.shade900,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            if (task['rejection_reason'] != null) ...[
-                              SizedBox(height: 4),
-                              Text(
-                                'Reason: ${task['rejection_reason']}',
-                                style: TextStyle(
-                                  color: Colors.red.shade700,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                            if (task['rejection_feedback'] != null) ...[
-                              SizedBox(height: 4),
-                              Text(
-                                '${task['rejection_feedback']}',
-                                style: TextStyle(
-                                  color: Colors.grey.shade700,
-                                  fontSize: 11,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 12),
-              ],
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getStatusIcon(status),
-                      color: color,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task['title'] ?? 'Untitled',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on,
-                              size: 14,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                task['location'] ?? 'No location',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (task['equipment_id'] != null || task['equipment_type'] != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.category,
-                                size: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  '${task['equipment_id'] ?? 'N/A'} - ${task['equipment_type'] ?? 'N/A'}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      isRejected ? 'NEEDS REVISION' : status.replaceAll('_', ' ').toUpperCase(),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (task['scheduled_date'] != null) ...[
-                const SizedBox(height: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+          BoxShadow(color: statusColor.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 8)),
+        ],
+        border: isRejected 
+            ? Border.all(color: AppTheme.statusRejected.withOpacity(0.35), width: 1.5) 
+            : Border.all(color: Colors.grey.shade100),
+      ),
+      child: Material(
+        color: Colors.transparent, borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () {
+            if (status == 'scheduled' || status == 'rejected') {
+              Navigator.push(context, SlidePageRoute(page: InspectionWorkflowPage(inspection: task)));
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isRejected) _buildRejectionBanner(task),
                 Row(
                   children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14,
-                      color: Colors.grey.shade600,
+                    Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [statusColor.withOpacity(0.15), statusColor.withOpacity(0.05)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: statusColor.withOpacity(0.1)),
+                      ),
+                      child: Icon(AppTheme.getStatusIcon(status), color: statusColor, size: 26),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Due: ${task['scheduled_date']}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(task['title'] ?? 'Untitled Inspection', style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary, letterSpacing: -0.2)),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+                              child: Icon(Icons.location_on_outlined, size: 14, color: AppTheme.textMuted),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(task['location'] ?? 'No Location', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    AppTheme.statusBadge(status),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                Container(height: 1, decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.grey.shade200, Colors.transparent]))),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    _buildTaskInfoChip(Icons.precision_manufacturing_outlined, 'Equipment', '${task['equipment_id'] ?? 'N/A'}'),
+                    const SizedBox(width: 16),
+                    _buildTaskInfoChip(Icons.calendar_today_outlined, 'Due Date', _formatDate(task['scheduled_date'])),
+                    const Spacer(),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [AppTheme.primaryRed.withOpacity(0.1), AppTheme.primaryRed.withOpacity(0.05)]),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.primaryRed.withOpacity(0.15)),
+                      ),
+                      child: IconButton(
+                        icon: Icon(Icons.add_alert_rounded, color: AppTheme.primaryRed, size: 20),
+                        onPressed: () => _setReminder(task['id'], task['title'] ?? 'Inspection'),
+                        tooltip: 'Set Reminder',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [AppTheme.primaryRed, AppTheme.primaryRed.withOpacity(0.85)]),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [BoxShadow(color: AppTheme.primaryRed.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))],
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                        onPressed: () {
+                          if (status == 'scheduled' || status == 'rejected') {
+                            Navigator.push(context, SlidePageRoute(page: InspectionWorkflowPage(inspection: task)));
+                          }
+                        },
+                        tooltip: 'Start Inspection',
                       ),
                     ),
                   ],
                 ),
               ],
-              if (task['notes'] != null &&
-                  task['notes'].toString().isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.grey.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.note,
-                        size: 16,
-                        color: Colors.grey.shade600,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          task['notes'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _setReminder(
-                      task['id'],
-                      task['title'] ?? 'Untitled',
-                    ),
-                    icon: const Icon(
-                      Icons.notifications_outlined,
-                      size: 18,
-                    ),
-                    label: const Text('Reminder'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.inspectorPrimary,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                  ),
-                  if (status == 'scheduled')
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // TODO: Start inspection
-                      },
-                      icon: const Icon(
-                        Icons.play_arrow,
-                        size: 18,
-                      ),
-                      label: const Text('Start'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  if (status == 'pending_review')
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // View submitted inspection
-                      },
-                      icon: const Icon(Icons.visibility, size: 18),
-                      label: const Text('View'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  if (status == 'pending_review')
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.purple.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.pending,
-                            size: 16,
-                            color: Colors.purple.shade700,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Waiting for approval',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.purple.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (status == 'completed')
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: Colors.green.shade700,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Completed',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _viewPdfReport(int inspectionId) async {
+    try {
+      final url = '${ApiConfig.baseUrl}/dashboard/inspections/$inspectionId/pdf';
+      final uri = Uri.parse(url);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } else {
+        throw Exception('Could not open PDF viewer');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to open PDF: $e'),
+          backgroundColor: AppTheme.statusRejected,
+        ),
+      );
+    }
+  }
+
+  Widget _buildRejectionBanner(dynamic task) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [const Color(0xFFFEF2F2), const Color(0xFFFEE2E2)]),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.statusRejected.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: AppTheme.statusRejected.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(Icons.report_problem_rounded, color: AppTheme.statusRejected, size: 16),
+                ),
+                const SizedBox(width: 12),
+                Text('REVISION REQUIRED', style: GoogleFonts.inter(color: const Color(0xFF991B1B), fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.8)),
+              ]),
+              TextButton.icon(
+                onPressed: () => _viewPdfReport(task['id']),
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 16, color: Color(0xFF991B1B)),
+                label: Text('View Report', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF991B1B))),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  backgroundColor: Colors.white.withOpacity(0.6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          if (task['rejection_reason'] != null) ...[const SizedBox(height: 14), Text('Reason: ${task['rejection_reason']}', style: GoogleFonts.inter(color: const Color(0xFFB91C1C), fontWeight: FontWeight.w600, fontSize: 13))],
+          if (task['rejection_feedback'] != null) ...[const SizedBox(height: 6), Text(task['rejection_feedback'], style: GoogleFonts.inter(color: Colors.grey.shade700, fontSize: 13, fontStyle: FontStyle.italic))],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskInfoChip(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppTheme.textMuted),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: GoogleFonts.inter(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(dynamic dateStr) {
+    if (dateStr == null) return 'N/A';
+    try {
+      final date = DateTime.parse(dateStr.toString());
+      return '${date.day}/${date.month}/${date.year}';
+    } catch (e) {
+      return dateStr.toString();
+    }
   }
 }
