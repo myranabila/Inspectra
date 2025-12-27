@@ -71,6 +71,8 @@ class Inspection(Base):
     completion_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
     inspector_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    defect_type = Column(String(100), nullable=True)
+
     
     # Report fields
     pdf_report_path = Column(String(500), nullable=True)

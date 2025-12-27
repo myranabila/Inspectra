@@ -9,6 +9,8 @@ import 'threads_list_page.dart';
 import 'inspections_list_page.dart';
 import 'theme/app_theme.dart';
 import 'widgets/time_filter.dart';
+import 'package:fl_chart/fl_chart.dart';
+
 
 class ManagerDashboardPage extends StatefulWidget {
   const ManagerDashboardPage({super.key});
@@ -21,16 +23,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   bool _loading = true;
   String? _error;
   String? _userName;
+  bool _showAnalytics = false;
+
 
   Map<String, dynamic>? _statsData;
   List<dynamic> _recentInspections = [];
   TimeFilterPeriod _selectedPeriod = TimeFilterPeriod.all;
+  List<dynamic> _defectAnalytics = [];
+  bool _loadingAnalytics = false;
+  String _analyticsError = '';
+
 
   @override
   void initState() {
     super.initState();
     _loadUserInfo();
     _loadDashboardData();
+    _loadDefectAnalytics(_selectedPeriod.toShortString());
   }
 
   Future<void> _loadUserInfo() async {
@@ -47,9 +56,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     });
 
     try {
+      debugPrint('Calling dashboard stats API...');
+    
       final stats =
           await DashboardService.getStats(period: _selectedPeriod.toShortString());
-      final inspections = await DashboardService.getRecentInspections(limit: 5);
+
+      debugPrint('Stats loaded: $stats');
+
+      final inspections =
+          await DashboardService.getRecentInspections(limit: 5);
 
       setState(() {
         _statsData = stats;
@@ -57,6 +72,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         _loading = false;
       });
     } catch (e) {
+      debugPrint('DASHBOARD ERROR: $e');
+
       setState(() {
         _error = e.toString().replaceAll('Exception: ', '');
         _loading = false;
@@ -64,8 +81,66 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     }
   }
 
+  Future<void> _loadDefectAnalytics(String period) async {
+    setState(() {
+      _loadingAnalytics = true;
+    });
+
+    try {
+      final data = await DashboardService.getDefectsByEquipment(period: period);
+      debugPrint('DEFECT ANALYTICS DATA: $data');
+
+      setState(() {
+        _defectAnalytics = data;
+        _analyticsError = '';
+      });
+    } catch (e) {
+      debugPrint('Error loading defect analytics: $e');
+      setState(() {
+        _analyticsError = e.toString().replaceAll('Exception: ', '');
+        _defectAnalytics = [];
+      });
+    } finally {
+      setState(() {
+        _loadingAnalytics = false;
+      });
+    }
+  }
+
+  Map<String, List<Map<String, dynamic>>> _groupAnalyticsByEquipment() {
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+
+    for (final item in _defectAnalytics) {
+      // Normalize values coming from backend (may contain nulls or non-numeric counts)
+      final equipment = (item['equipment_type'] ?? 'Unknown').toString();
+      final defectType = (item['defect_type'] ?? 'Unknown').toString();
+      num count = 0;
+      try {
+        if (item['count'] is num) {
+          count = item['count'] as num;
+        } else {
+          count = num.parse(item['count'].toString());
+        }
+      } catch (e) {
+        count = 0;
+      }
+
+      grouped.putIfAbsent(equipment, () => []);
+      grouped[equipment]!.add({
+        'defect_type': defectType,
+        'count': count,
+      });
+    }
+
+    return grouped;
+  }
+
   @override
   Widget build(BuildContext context) {
+    
+    final groupedData = _groupAnalyticsByEquipment();
+    final equipmentKeys = groupedData.keys.toList();
+
     // Build stats cards from API data
     final stats = _statsData != null
         ? [
@@ -229,6 +304,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                               _selectedPeriod = period;
                             });
                             _loadDashboardData();
+                            _loadDefectAnalytics(period.toShortString());
                           },
                         ),
                         const SizedBox(height: 24),
@@ -326,6 +402,182 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                             );
                           }).toList(),
                         ),
+
+                        const SizedBox(height: 32),
+
+                        // ==================== Inspection Analytics ====================
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            AppTheme.sectionHeader(
+                              'Inspection Analytics',
+                              Colors.blue.shade700,
+                              ),
+                              TextButton.icon(
+                                icon: Icon(
+                                  _showAnalytics ? Icons.expand_less : Icons.expand_more,
+                                  color: Colors.blue.shade700,
+                                  ),
+                                  label: Text(
+                                    _showAnalytics ? 'Hide Analytics' : 'View Analytics',
+                                    style: TextStyle(color: Colors.blue.shade700),
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showAnalytics = !_showAnalytics;
+                                        });
+                                    },
+                              ),
+                          ],
+                        ),
+                      
+                        if (_showAnalytics) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            "Analysis of completed inspections based on selected time period.",
+                            style: AppTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 16),
+
+                          Card(
+                            elevation: 1,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: const [
+                                      Text(
+                                        "Defect Frequency by Vessel Type",
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Icon(Icons.bar_chart, color: Colors.blue),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    height: 260,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.grey.shade300),
+                                    ),
+                                    child: _loadingAnalytics
+                                        ? const CircularProgressIndicator()
+                                        : _analyticsError.isNotEmpty
+                                            ? Text(
+                                                _analyticsError,
+                                                style: const TextStyle(color: Colors.red),
+                                              )
+                                            : _defectAnalytics.isEmpty
+                                                ? const Text(
+                                                    "No analytics data available",
+                                                    style: TextStyle(color: Colors.grey),
+                                                  )
+                                                  
+                                                : BarChart(
+                                                    BarChartData(
+                                                      alignment: BarChartAlignment.spaceAround,
+                                                      maxY: groupedData.isEmpty
+                                                          ? 1
+                                                          : groupedData.values
+                                                              .map((list) =>
+                                                                  list.fold<num>(0, (sum, e) => sum + (e['count'] as num)))
+                                                              .reduce((a, b) => a > b ? a : b)
+                                                              .toDouble() +
+                                                              1,
+                                                              
+                                                      barTouchData: BarTouchData(
+                                                        enabled: true,
+                                                        touchTooltipData: BarTouchTooltipData(
+                                                          tooltipBgColor: Colors.black87,
+                                                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                                            final equipment = equipmentKeys[group.x.toInt()];
+                                                            final items = groupedData[equipment]!;
+
+                                                            final breakdown = items
+                                                                .map((e) => "${e['defect_type']}: ${e['count']}")
+                                                                .join('\n');
+
+                                                            return BarTooltipItem(
+                                                              "$equipment\n$breakdown",
+                                                              const TextStyle(color: Colors.white, fontSize: 12),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                                      
+                                                      titlesData: FlTitlesData(
+                                                        leftTitles: AxisTitles(
+                                                          sideTitles: SideTitles(
+                                                            showTitles: true,
+                                                            reservedSize: 28,
+                                                            interval: 1,
+                                                          ),
+                                                        ),
+
+                                                        rightTitles: AxisTitles(
+                                                          sideTitles: SideTitles(showTitles: false),
+                                                        ),
+
+                                                        topTitles: AxisTitles(
+                                                          sideTitles: SideTitles(showTitles: false),
+                                                        ),
+
+                                                        bottomTitles: AxisTitles(
+                                                          sideTitles: SideTitles(
+                                                            showTitles: true,
+                                                            getTitlesWidget: (value, meta) {
+                                                              final index = value.toInt();
+                                                              if (index < equipmentKeys.length) {
+                                                                return Padding(
+                                                                  padding: const EdgeInsets.only(top: 8),
+                                                                  child: Text(
+                                                                    equipmentKeys[index],
+                                                                    style: const TextStyle(fontSize: 11),
+                                                                    textAlign: TextAlign.center,
+                                                                  ),
+                                                                );
+                                                              }
+                                                              return const SizedBox.shrink();
+                                                            },
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      
+                                                      barGroups: List.generate(equipmentKeys.length, (index) {
+                                                        final equipment = equipmentKeys[index];
+                                                        final totalCount = groupedData[equipment]!
+                                                            .fold<num>(0, (sum, item) => sum + (item['count'] as num));
+
+                                                        return BarChartGroupData(
+                                                          x: index,
+                                                          barRods: [
+                                                            BarChartRodData(
+                                                              toY: totalCount.toDouble(),
+                                                              color: Colors.blue,
+                                                              width: 20,
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                          ],
+                                                        );
+                                                      }),
+                                                    ),
+                                                  ),
+
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+
 
                         const SizedBox(height: 20),
 
@@ -644,4 +896,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       ),
     );
   }
+
+
 }

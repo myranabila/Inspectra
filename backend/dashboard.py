@@ -1,3 +1,15 @@
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
+from datetime import datetime, date, timedelta
+from db import get_db
+from auth import get_current_user
+import models
+import os
+import shutil
+from pathlib import Path
+
 def ensure_pdf_for_inspection(inspection):
     """Ensure the inspection has a PDF report. If not, assign a sample PDF based on status."""
     if not inspection.pdf_report_path or not os.path.exists(inspection.pdf_report_path):
@@ -12,17 +24,6 @@ def ensure_pdf_for_inspection(inspection):
         if sample_pdf and os.path.exists(sample_pdf):
             inspection.pdf_report_path = sample_pdf
     return inspection
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
-from datetime import datetime, date, timedelta
-from db import get_db
-from auth import get_current_user
-import models
-import os
-import shutil
-from pathlib import Path
 
 router = APIRouter()
 
@@ -424,6 +425,7 @@ async def submit_inspection_report(
     inspection_id: int,
     findings: str,
     recommendations: str,
+    defect_type: str = None,
     notes: str = None,
     pdf_file: UploadFile = File(None),
     current_user: models.User = Depends(get_current_user),
@@ -469,6 +471,7 @@ async def submit_inspection_report(
     # Update inspection with report data and status
     inspection.report_findings = findings
     inspection.report_recommendations = recommendations
+    inspection.defect_type = defect_type
     if notes:
         inspection.notes = notes
     if pdf_path:
@@ -555,3 +558,43 @@ def get_scheduled(
         "notes": insp.notes,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
+
+@router.get("/analytics/defects-by-equipment")
+def get_defects_by_equipment(
+    period: str = "all",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Returns defect frequency grouped by equipment type and defect type.
+    Used for Inspection Analytics graph.
+    """
+
+    # Only completed inspections should be analysed
+    query = db.query(
+        models.Inspection.equipment_type,
+        models.Inspection.defect_type,
+        func.count(models.Inspection.id).label("count")
+    ).filter(
+        models.Inspection.status == models.InspectionStatusEnum.completed,
+        models.Inspection.defect_type.isnot(None)
+    )
+
+    # Optional time filter (reuse existing logic style)
+    start_date = get_start_date_from_period(period)
+    if start_date:
+        query = query.filter(models.Inspection.created_at >= start_date)
+
+    results = query.group_by(
+        models.Inspection.equipment_type,
+        models.Inspection.defect_type
+    ).all()
+
+    return [
+        {
+            "equipment_type": r.equipment_type,
+            "defect_type": r.defect_type,
+            "count": r.count
+        }
+        for r in results
+    ]

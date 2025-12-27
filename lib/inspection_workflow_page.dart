@@ -24,6 +24,17 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
   
   // Per-photo metadata: componentType, conditionStatus, inspectorComment
   List<Map<String, String?>> _photoMetadata = [];
+
+  final List<String> _defectTypes = [
+    'None',
+    'Corrosion',
+    'Crack',
+    'Leakage',
+    'Deformation',
+    'Erosion',
+    'Mechanical Damage',
+    'Other',
+  ];
   
   // Component type options
   final List<String> _componentTypes = [
@@ -92,6 +103,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
             for (var i = 0; i < remainingSlots; i++) {
               _photoMetadata.add({
                 'componentType': null,
+                'defectType': null,
                 'conditionStatus': null,
                 'comment': '',
               });
@@ -104,6 +116,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
             for (var i = 0; i < images.length; i++) {
               _photoMetadata.add({
                 'componentType': null,
+                'defectType': null,
                 'conditionStatus': null,
                 'comment': '',
               });
@@ -217,6 +230,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     // Validate that all photos have complete metadata
     for (int i = 0; i < _photoMetadata.length; i++) {
       if (_photoMetadata[i]['componentType'] == null || 
+          _photoMetadata[i]['defectType'] == null ||
           _photoMetadata[i]['conditionStatus'] == null || 
           (_photoMetadata[i]['comment']?.trim().isEmpty ?? true)) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -238,6 +252,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           'bytes': bytes,
           'name': _selectedImages[i].name,
           'componentType': _photoMetadata[i]['componentType'],
+          'defectType': _photoMetadata[i]['defectType'],
           'conditionStatus': _photoMetadata[i]['conditionStatus'],
           'comment': _photoMetadata[i]['comment'],
         });
@@ -836,6 +851,31 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
             },
           ),
           
+          const SizedBox(height: 12),
+          
+          // Defect Type Dropdown
+          DropdownButtonFormField<String>(
+            value: _photoMetadata[index]['defectType'],
+            decoration: const InputDecoration(
+              labelText: 'Defect Type *',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            items: _defectTypes.map((String defect) {
+              return DropdownMenuItem<String>(
+                value: defect,
+                child: Text(defect, style: TextStyle(fontSize: 13)),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _photoMetadata[index]['defectType'] = newValue;
+              });
+            },
+          ),
+
           const SizedBox(height: 12),
           
           // Condition Status Dropdown

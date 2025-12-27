@@ -18,6 +18,25 @@ class DashboardService {
 
     return response;
   }
+  
+  // Get defect frequency grouped by equipment type and defect type
+  static Future<List<dynamic>> getDefectsByEquipment({String period = "all"}) async {
+    final token = await AuthService.getToken();
+
+    try {
+      final response = await ApiService.getList(
+        url: '${ApiConfig.baseUrl}/dashboard/analytics/defects-by-equipment?period=$period',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      return response;
+    } catch (e) {
+      throw Exception('Failed to load defect analytics: $e');
+    }
+  }
 
   // Get inspector's assigned tasks
   static Future<List<dynamic>> getMyTasks() async {
@@ -219,4 +238,5 @@ class DashboardService {
       throw Exception('Failed to submit report: $e');
     }
   }
+
 }
