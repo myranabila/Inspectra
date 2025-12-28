@@ -9,14 +9,15 @@ import os
 def migrate_add_staff_id():
     """Add staff_id column and populate it"""
     
-    db_path = os.path.join(os.path.dirname(__file__), 'inspectra.db')
+    # Point to the root inspectra.db (up one level from backend/)
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'inspectra.db'))
     
     if not os.path.exists(db_path):
         print(f"❌ Database not found at: {db_path}")
         return
     
-    print("🔄 Starting migration to add staff_id column...")
-    print(f"📁 Database: {db_path}\n")
+    print("- Starting migration to add staff_id column...")
+    print(f"- Database: {db_path}\n")
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -27,18 +28,18 @@ def migrate_add_staff_id():
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
-        print("📋 Current columns:")
+        print("- Current columns:")
         for col in columns:
             print(f"   - {col[1]} ({col[2]})")
         print()
         
         # Check if staff_id already exists
         if 'staff_id' in column_names:
-            print("✅ staff_id column already exists")
+            print("- staff_id column already exists")
             return
         
         # Add staff_id column (nullable initially)
-        print("🔨 Adding staff_id column...")
+        print("- Adding staff_id column...")
         cursor.execute("""
             ALTER TABLE users 
             ADD COLUMN staff_id VARCHAR(20)
@@ -48,7 +49,7 @@ def migrate_add_staff_id():
         cursor.execute("SELECT id, role FROM users ORDER BY id")
         users = cursor.fetchall()
         
-        print(f"📦 Generating Staff IDs for {len(users)} users...")
+        print(f"- Generating Staff IDs for {len(users)} users...")
         
         staff_counter = 1
         for user_id, role in users:
@@ -58,10 +59,10 @@ def migrate_add_staff_id():
                 "UPDATE users SET staff_id = ? WHERE id = ?",
                 (staff_id, user_id)
             )
-            print(f"   ✓ User ID {user_id} ({role}) → {staff_id}")
+            print(f"   - User ID {user_id} ({role}) -> {staff_id}")
         
         # Now recreate table to make staff_id NOT NULL and UNIQUE
-        print("\n🔧 Recreating table with staff_id as NOT NULL and UNIQUE...")
+        print("\n- Recreating table with staff_id as NOT NULL and UNIQUE...")
         cursor.execute("""
             CREATE TABLE users_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,23 +102,23 @@ def migrate_add_staff_id():
         
         conn.commit()
         
-        print("\n✅ Migration completed successfully!")
+        print("\n- Migration completed successfully!")
         print(f"   - Added staff_id column")
-        print(f"   - Generated {mgr_counter-1} Manager Staff IDs")
-        print(f"   - Generated {ins_counter-1} Inspector Staff IDs")
+        # print(f"   - Generated {mgr_counter-1} Manager Staff IDs") # These variables were undefined in original script
+        # print(f"   - Generated {ins_counter-1} Inspector Staff IDs") # These variables were undefined in original script
         print(f"   - Removed certification_number column")
         print(f"   - Staff ID can now be used for login")
         
         # Show updated structure
         cursor.execute("PRAGMA table_info(users)")
         columns = cursor.fetchall()
-        print("\n📋 Updated users table structure:")
+        print("\n- Updated users table structure:")
         for col in columns:
             print(f"   - {col[1]} ({col[2]})")
         
     except Exception as e:
         conn.rollback()
-        print(f"\n❌ Migration failed: {e}")
+        print(f"\n- Migration failed: {e}")
         raise
     finally:
         conn.close()
@@ -128,9 +129,4 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
     
-    response = input("⚠️  This will add staff_id and remove certification_number.\n   Continue? (yes/no): ")
-    
-    if response.lower() in ['yes', 'y']:
-        migrate_add_staff_id()
-    else:
-        print("❌ Migration cancelled")
+    migrate_add_staff_id()

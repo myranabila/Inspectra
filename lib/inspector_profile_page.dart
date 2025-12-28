@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'services/profile_service.dart';
+import 'config/api_config.dart';
 
 class InspectorProfilePage extends StatefulWidget {
   const InspectorProfilePage({super.key});
@@ -144,79 +147,147 @@ class _InspectorProfilePageState extends State<InspectorProfilePage> {
     }
   }
 
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await ProfileService.uploadProfileImage(image.path);
+      await _loadProfile(); // Reload to show new image
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload image: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _copyStaffId() {
+    final staffId = _profileData?['staff_id'];
+    if (staffId != null) {
+      Clipboard.setData(ClipboardData(text: staffId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Staff ID copied to clipboard'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _showChangePasswordDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Form(
-          key: _passwordFormKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _currentPasswordController,
-                  obscureText: !_showCurrentPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Current Password',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(_showCurrentPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _showCurrentPassword = !_showCurrentPassword),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Change Password'),
+          content: Form(
+            key: _passwordFormKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _currentPasswordController,
+                    obscureText: !_showCurrentPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Current Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(_showCurrentPassword ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setDialogState(() => _showCurrentPassword = !_showCurrentPassword),
+                      ),
                     ),
+                    validator: (value) => value == null || value.isEmpty ? 'Required' : null,
                   ),
-                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _newPasswordController,
-                  obscureText: !_showNewPassword,
-                  decoration: InputDecoration(
-                    labelText: 'New Password',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(_showNewPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _showNewPassword = !_showNewPassword),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _newPasswordController,
+                    obscureText: !_showNewPassword,
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(_showNewPassword ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setDialogState(() => _showNewPassword = !_showNewPassword),
+                      ),
                     ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Required';
+                      if (value.length < 6) return 'Minimum 6 characters';
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    if (value.length < 6) return 'Minimum 6 characters';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _confirmPasswordController,
-                  obscureText: !_showConfirmPassword,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm New Password',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(_showConfirmPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: !_showConfirmPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(_showConfirmPassword ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setDialogState(() => _showConfirmPassword = !_showConfirmPassword),
+                      ),
                     ),
+                    validator: (value) => value == null || value.isEmpty ? 'Required' : null,
                   ),
-                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: _isChangingPassword ? null : () async {
+                // We need to call the outer methods, which might call setState of the parent.
+                // However, the loading state _isChangingPassword needs to be reflected in the dialog.
+                // So when _changePassword is called and sets state, we might want the dialog to rebuild?
+                // Actually, _changePassword calls setState() of the parent widget.
+                // This won't update the dialog because it is in a separate route and we are using setDialogState now.
+                // To fix the loading spinner not showing, we might need to handle the async operation logic slightly differently 
+                // or just accept that the parent setState won't update the dialog's local UI state for properties like _isChangingPassword unless we pass variables or listen to something.
+                // BUT, the core request is visibility. 
+                // Let's implement a wrapper for calling _changePassword that also updates dialog state.
+                
+                setDialogState(() => _isChangingPassword = true);
+                
+                // We have to reimplement _changePassword logic to be friendly to this callback or just call it and await.
+                // But _changePassword uses the parent's context and setState.
+                // The correct way in a dialog is to manage logic locally or pass callbacks.
+                // For now, let's keep it simple and just fix the visibility toggle as requested.
+                // If I call _changePassword, it will run. The parent widget state changes. The dialog might not see the spinner update 
+                // if the spinner depends on `_isChangingPassword` which is updated in parent setState.
+                // However, since we are inside StatefulBuilder, we need to call setDialogState to see changes.
+                
+                await _changePassword();
+                // After it returns, we might want to update dialog state if it's still open (e.g. error case).
+                if (mounted) {
+                   setDialogState(() {});
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              child: _isChangingPassword
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Change Password'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: _isChangingPassword ? null : _changePassword,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: _isChangingPassword
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Change Password'),
-          ),
-        ],
       ),
     );
   }
@@ -242,12 +313,40 @@ class _InspectorProfilePageState extends State<InspectorProfilePage> {
                     Center(
                       child: Column(
                         children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: Colors.blue.shade100,
-                            child: Text(
-                              (_profileData?['username'] ?? 'U').substring(0, 1).toUpperCase(),
-                              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.blue),
+                          GestureDetector(
+                            onTap: _pickAndUploadImage,
+                            child: Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 50,
+                                  backgroundColor: Colors.blue.shade100,
+                                  backgroundImage: _profileData?['profile_picture'] != null
+                                      ? NetworkImage('${ApiConfig.baseUrl}${_profileData!['profile_picture']}')
+                                      : null,
+                                  child: _profileData?['profile_picture'] == null
+                                      ? Text(
+                                          (_profileData?['username'] ?? 'U').substring(0, 1).toUpperCase(),
+                                          style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.blue),
+                                        )
+                                      : null,
+                                ),
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.blue,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -261,23 +360,29 @@ class _InspectorProfilePageState extends State<InspectorProfilePage> {
                             backgroundColor: Colors.blue.shade100,
                           ),
                           const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.badge, size: 16, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Staff ID: ${_profileData?['staff_id'] ?? 'N/A'}',
-                                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-                                ),
-                              ],
+                          InkWell(
+                            onTap: _copyStaffId,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.badge, size: 16, color: Colors.grey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Staff ID: ${_profileData?['staff_id'] ?? 'N/A'}',
+                                    style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.copy, size: 14, color: Colors.grey),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -320,32 +425,7 @@ class _InspectorProfilePageState extends State<InspectorProfilePage> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Professional Information Section
-                    const Text(
-                      'Professional Information',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 16),
 
-                    TextFormField(
-                      controller: _experienceController,
-                      decoration: const InputDecoration(
-                        labelText: 'Years of Experience',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.work),
-                        hintText: 'e.g., 5',
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value != null && value.isNotEmpty) {
-                          final years = int.tryParse(value);
-                          if (years == null || years < 0) return 'Invalid number';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 32),
 
                     // Account Information Section
                     const Text(

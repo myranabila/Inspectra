@@ -28,6 +28,8 @@ class _DashboardModuleState extends State<DashboardModule> {
 
   Map<String, dynamic>? _statsData;
   List<dynamic> _recentInspections = [];
+  List<dynamic> _upcomingTasks = [];
+  int _reminderCount = 0;
   TimeFilterPeriod _selectedPeriod = TimeFilterPeriod.all;
 
   @override
@@ -56,10 +58,33 @@ class _DashboardModuleState extends State<DashboardModule> {
       final stats =
           await DashboardService.getStats(period: _selectedPeriod.toShortString());
       final inspections = await DashboardService.getRecentInspections(limit: 5);
+      final tasks = await DashboardService.getMyTasks();
 
       setState(() {
         _statsData = stats;
         _recentInspections = inspections;
+        _upcomingTasks = tasks.take(3).toList(); // Take top 3 for dashboard
+        
+        // Calculate reminder count
+        int count = 0;
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        
+        for (var task in tasks) {
+          if (task['scheduled_date'] != null) {
+            try {
+              final dueDate = DateTime.parse(task['scheduled_date'].toString());
+              final taskDate = DateTime(dueDate.year, dueDate.month, dueDate.day);
+              final difference = taskDate.difference(today).inDays;
+              
+              if (difference >= 1 && difference <= 5) {
+                count++;
+              }
+            } catch (_) {}
+          }
+        }
+        _reminderCount = count;
+        
         _loading = false;
       });
     } catch (e) {
@@ -139,19 +164,30 @@ class _DashboardModuleState extends State<DashboardModule> {
             },
           ];
 
-    final upcomingTasks = [
-      {
-        "title": "Monthly Report Review",
-        "date": "Dec 10, 2025",
-        "priority": "High",
-      },
-      {
-        "title": "HVAC Inspection",
-        "date": "Dec 12, 2025",
-        "priority": "Medium",
-      },
-      {"title": "Cleanliness Audit", "date": "Dec 15, 2025", "priority": "Low"},
-    ];
+    final upcomingTasks = _upcomingTasks.map((task) {
+      // Map API task to UI format
+      final dateStr = task['scheduled_date']?.toString() ?? '';
+      String formattedDate = dateStr;
+      try {
+        final date = DateTime.parse(dateStr);
+        formattedDate = "${_getMonth(date.month)} ${date.day}, ${date.year}";
+      } catch (_) {}
+      
+      // Determine priority based on due date
+      String priority = "Low";
+      try {
+         final date = DateTime.parse(dateStr);
+         final diff = date.difference(DateTime.now()).inDays;
+         if (diff < 2) priority = "High";
+         else if (diff < 7) priority = "Medium";
+      } catch (_) {}
+
+      return {
+        "title": task['title']?.toString() ?? 'Untitled',
+        "date": formattedDate,
+        "priority": priority,
+      };
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundGrey,
@@ -347,6 +383,23 @@ class _DashboardModuleState extends State<DashboardModule> {
               ListTile(
                 leading: const Icon(Icons.notifications),
                 title: const Text('Reminder'),
+                trailing: _reminderCount > 0
+                    ? Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          _reminderCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      )
+                    : null,
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -913,5 +966,14 @@ class _DashboardModuleState extends State<DashboardModule> {
               ),
             ),
     );
+  }
+
+  String _getMonth(int month) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    if (month >= 1 && month <= 12) return months[month - 1];
+    return '';
   }
 }

@@ -4,7 +4,7 @@ import 'services/messaging_service.dart';
 import 'services/auth_service.dart';
 import 'config/api_config.dart';
 import 'theme/app_theme.dart';
-import 'dart:html' as html;
+import 'package:url_launcher/url_launcher.dart';
 
 class ManagerApprovalsPage extends StatefulWidget {
   final int? initialTab;
@@ -801,7 +801,10 @@ class _ManagerApprovalsPageState extends State<ManagerApprovalsPage> {
       final url = '${ApiConfig.baseUrl}/dashboard/inspections/$inspectionId/pdf';
       
       // Open PDF in new browser tab
-      html.window.open(url, '_blank');
+      final uri = Uri.parse(url);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw 'Could not launch $url';
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

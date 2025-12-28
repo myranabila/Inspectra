@@ -15,7 +15,7 @@ def migrate_add_profile_fields():
     session = Session()
     
     try:
-        print("🔄 Starting profile fields migration...")
+        print("- Starting profile fields migration...")
         
         # Check if columns already exist
         result = session.execute(text("PRAGMA table_info(users)"))
@@ -48,7 +48,7 @@ def migrate_add_profile_fields():
             migrations_needed.append("ALTER TABLE users ADD COLUMN last_password_change TIMESTAMP")
         
         if not migrations_needed:
-            print("✅ All profile fields already exist. No migration needed.")
+            print("- All profile fields already exist. No migration needed.")
             return
         
         # Execute migrations
@@ -62,18 +62,18 @@ def migrate_add_profile_fields():
         
         session.commit()
         
-        print(f"✅ Migration completed successfully!")
+        print(f"- Migration completed successfully!")
         print(f"   - Added {len(migrations_needed)} new fields to users table")
         
         # Show updated table structure
         result = session.execute(text("PRAGMA table_info(users)"))
-        print("\n📊 Updated users table structure:")
+        print("\n- Updated users table structure:")
         for row in result:
             print(f"   - {row[1]} ({row[2]})")
             
     except Exception as e:
         session.rollback()
-        print(f"❌ Migration failed: {str(e)}")
+        print(f"X Migration failed: {str(e)}")
         raise
     finally:
         session.close()

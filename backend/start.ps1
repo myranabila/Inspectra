@@ -3,7 +3,7 @@ Write-Host "============================================================" -Foreg
 Write-Host "INSPECTRA DATABASE FIX & BACKEND STARTUP" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
-Set-Location C:\workshop2\Inspectra\backend
+Set-Location $PSScriptRoot
 
 Write-Host "`n[Step 1/3] Recreating database tables..." -ForegroundColor Yellow
 python -c "from db import engine; import models; models.Base.metadata.drop_all(bind=engine); models.Base.metadata.create_all(bind=engine); print('Tables created successfully')"

@@ -128,7 +128,8 @@ class _LoginPageState extends State<LoginPage> {
                     // FORM ----------------------------------------------
                     Form(
                       key: _formKey,
-                      child: Column(
+                      child: AutofillGroup(
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Error Message - Modernized
@@ -155,6 +156,7 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _emailController,
+                            autofillHints: const [AutofillHints.username],
                             // 6. Minimalist Input Decoration: UnderlineInputBorder
                             decoration: InputDecoration(
                               hintText: 'Enter your username',
@@ -185,6 +187,7 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _passwordController,
+                            autofillHints: const [AutofillHints.password],
                             obscureText: true,
                             // 6. Minimalist Input Decoration: UnderlineInputBorder
                             decoration: const InputDecoration(
@@ -239,6 +242,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ],
+                        ),
                       ),
                     ),
                   ],

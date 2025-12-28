@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, 'c:\\workshop2\\Inspectra\\backend')
+# Removed hardcoded path
 
 from db import engine, Base
 import models

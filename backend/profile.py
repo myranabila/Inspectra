@@ -11,6 +11,9 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 import secrets
 import string
+import shutil
+import os
+from fastapi import UploadFile, File
 
 from db import get_db
 from auth import get_current_user
@@ -187,6 +190,42 @@ def update_my_password(
     db.commit()
     
     return {"message": "Password updated successfully"}
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload profile picture"""
+    
+    # Validate file type
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    # Create unique filename
+    file_ext = os.path.splitext(file.filename)[1]
+    filename = f"user_{current_user.id}_{secrets.token_hex(8)}{file_ext}"
+    file_path = os.path.join("uploads", filename)
+    
+    # Save file
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # Update user profile
+    # We store the relative path or full URL. Storing relative path is better for portability.
+    # Frontend will need to prepend base URL.
+    # However, to make it easier for frontend, let's just store the path starting with /uploads
+    # But wait, main.py mounts /uploads.
+    
+    relative_path = f"/uploads/{filename}"
+    current_user.profile_picture = relative_path
+    current_user.updated_at = func.now()
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return current_user
 
 # ==================== Manager-Only Endpoints ====================
 

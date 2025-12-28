@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:mime/mime.dart';
+import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 import '../config/api_config.dart';
 
@@ -59,6 +61,41 @@ class ProfileService {
       return json.decode(response.body);
     } else {
       throw Exception('Failed to update profile: ${response.body}');
+    }
+    }
+
+  static Future<Map<String, dynamic>> uploadProfileImage(String filePath) async {
+    final token = await AuthService.getToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/profile/me/avatar'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    final mimeType = lookupMimeType(filePath);
+    MediaType? mediaType;
+    if (mimeType != null) {
+      final split = mimeType.split('/');
+      mediaType = MediaType(split[0], split[1]);
+    }
+
+    request.files.add(await http.MultipartFile.fromPath(
+      'file', 
+      filePath,
+      contentType: mediaType,
+    ));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) {
+      await AuthService.refreshUserData();
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to upload profile picture: ${response.body}');
     }
   }
 

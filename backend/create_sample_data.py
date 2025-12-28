@@ -3,9 +3,7 @@ import os
 from datetime import datetime, timedelta, date
 import random
 
-# Change to backend directory
-os.chdir('c:\\workshop2\\Inspectra\\backend')
-sys.path.insert(0, 'c:\\workshop2\\Inspectra\\backend')
+# Removed hardcoded paths
 
 from db import SessionLocal, engine
 import models
@@ -75,6 +73,7 @@ def create_sample_data():
                 password_hash=ph.hash(f'{username}123'),  # password is username123
                 email=email,
                 role=role,
+                staff_id=f'STF{random.randint(10000, 99999)}',
                 phone=f'012345{random.randint(1000, 9999)}'
             )
             db.add(user)
@@ -141,7 +140,7 @@ def create_sample_data():
             inspections_created += 1
     
     db.commit()
-    print(f"✓ Created {inspections_created} inspections")
+    print(f"[OK] Created {inspections_created} inspections")
     
     # Create reports for some inspections
     all_inspections = db.query(models.Inspection).all()
@@ -176,7 +175,7 @@ def create_sample_data():
             reports_created += 1
     
     db.commit()
-    print(f"✓ Created {reports_created} reports")
+    print(f"[OK] Created {reports_created} reports")
     
     # Print summary statistics
     print("\n" + "="*60)
@@ -231,7 +230,7 @@ def create_sample_data():
     print("="*60)
     
     db.close()
-    print("\n✓ Sample data created successfully!")
+    print("\n[OK] Sample data created successfully!")
 
 if __name__ == "__main__":
     create_sample_data()

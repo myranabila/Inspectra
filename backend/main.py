@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from db import engine, Base, get_db
 import models
@@ -11,6 +13,14 @@ from profile import router as profile_router
 from report import router as report_router
 
 app = FastAPI(title="Inspection System API")
+
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+# Mount static files
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

@@ -103,6 +103,44 @@ def assign_task(
     db.commit()
     db.refresh(new_inspection)
     
+    # Automatic Reminder Creation Logic
+    # "make that trigger when a task’s due date has 5, 3, and 1 days remaining"
+    if scheduled_date_obj:
+        scheduled_dt = datetime.combine(scheduled_date_obj, datetime.min.time())
+        days_before_list = [5, 3, 1]
+        
+        for days in days_before_list:
+            remind_at = scheduled_dt - timedelta(days=days)
+            # Only create reminder if the reminder date is in the future or today
+            if remind_at >= datetime.today() - timedelta(days=1): 
+                # Note: We allow creating it even if it's today, but maybe not in the past.
+                # Adjusting logic: if remind_at is in the past, maybe skipped? 
+                # Or set to now? Usually standard is to assume future workflow.
+                # We will check if remind_at > now. 
+                
+                # Check for "future" reminder
+                if remind_at > datetime.now():
+                    pass
+                else:
+                    # If the reminder time is passed (e.g. task scheduled for tomorrow, so 5-day reminder is in past), 
+                    # we might skip it or set it to now. 
+                    # For strict compliance with "trigger when... 5, 3, 1 days remaining", 
+                    # if 5 days remaining was 4 days ago, we shouldn't trigger it now.
+                    if remind_at < datetime.now():
+                        continue
+
+                new_reminder = models.Reminder(
+                    inspection_id=new_inspection.id,
+                    user_id=request.inspector_id,
+                    title=f"Reminder: {request.title} is due in {days} days",
+                    message=f"Upcoming inspection at {request.location}. Please ensure you are prepared.",
+                    remind_at=remind_at,
+                    status=models.ReminderStatusEnum.pending
+                )
+                db.add(new_reminder)
+        
+        db.commit()
+
     return {
         "message": "Task successfully assigned",
         "inspection_id": new_inspection.id,
