@@ -84,7 +84,11 @@ class AuthService {
   // Get user name from local storage
   static Future<String?> getUserName() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('user_name');
+    final name = prefs.getString('user_name');
+    if (name != null && name.isNotEmpty) {
+      return name[0].toUpperCase() + name.substring(1);
+    }
+    return name;
   }
 
   // Check if user is logged in

@@ -63,15 +63,16 @@ def create_sample_data():
         ph = PasswordHasher()
         
         default_users_data = [
-            ('manager', 'manager@inspectra.com', models.RoleEnum.manager),
-            ('adam', 'adam@inspectra.com', models.RoleEnum.inspector),
-            ('ali', 'ali@inspectra.com', models.RoleEnum.inspector),
-            ('abu', 'abu@inspectra.com', models.RoleEnum.inspector),
+            ('irfan', 'irfan@ipetro.com', models.RoleEnum.manager),
+            ('adam', 'adam@ipetro.com', models.RoleEnum.inspector),
+            ('ali', 'ali@ipetro.com', models.RoleEnum.inspector),
+            ('abu', 'abu@ipetro.com', models.RoleEnum.inspector),
         ]
         
         for username, email, role in default_users_data:
             user = models.User(
                 username=username,
+                staff_id=f"STF{random.randint(10000, 99999)}",
                 password_hash=ph.hash(f'{username}123'),  # password is username123
                 email=email,
                 role=role,
@@ -99,7 +100,8 @@ def create_sample_data():
             target_year -= 1
         
         # Create 20-30 inspections per month
-        num_inspections = random.randint(20, 30)
+        # Create 0 inspections per month for clean slate
+        num_inspections = 0 # random.randint(20, 30)
         
         for i in range(num_inspections):
             # Random date in the target month

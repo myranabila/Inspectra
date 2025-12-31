@@ -100,28 +100,28 @@ try:
             {
                 'username': 'manager',
                 'password_hash': ph.hash('manager123'),
-                'email': 'manager@inspectra.com',
+                'email': 'manager@ipetro.com',
                 'role': models.RoleEnum.manager,
                 'phone': '0123456789'
             },
             {
                 'username': 'adam',
                 'password_hash': ph.hash('adam123'),
-                'email': 'adam@inspectra.com',
+                'email': 'adam@ipetro.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456780'
             },
             {
                 'username': 'ali',
                 'password_hash': ph.hash('ali123'),
-                'email': 'ali@inspectra.com',
+                'email': 'ali@ipetro.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456781'
             },
             {
                 'username': 'abu',
                 'password_hash': ph.hash('abu123'),
-                'email': 'abu@inspectra.com',
+                'email': 'abu@ipetro.com',
                 'role': models.RoleEnum.inspector,
                 'phone': '0123456782'
             }

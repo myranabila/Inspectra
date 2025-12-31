@@ -1,0 +1,56 @@
+﻿Analyzing Inspectra...                                          
+
+   info - Use the null-aware operator '?.' rather than an explicit 'null' comparison - lib\conversation_page.dart:102:27 - prefer_null_aware_operators
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\dashboard_page.dart:196:46 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\dashboard_page.dart:398:48 - use_build_context_synchronously
+   info - The private field _selectedImages could be 'final' - lib\inspection_workflow_page.dart:23:15 - prefer_final_fields
+   info - The private field _photoMetadata could be 'final' - lib\inspection_workflow_page.dart:26:30 - prefer_final_fields
+   info - The private field _isLoading could be 'final' - lib\inspection_workflow_page.dart:59:8 - prefer_final_fields
+   info - Don't use 'BuildContext's across async gaps - lib\inspection_workflow_page.dart:251:7 - use_build_context_synchronously
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\inspection_workflow_page.dart:818:13 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\inspection_workflow_page.dart:843:13 - deprecated_member_use
+   info - Invalid use of a private type in a public API - lib\login_page.dart:8:3 - library_private_types_in_public_api
+   info - Don't use 'BuildContext's across async gaps - lib\login_page.dart:41:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\login_page.dart:44:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_dashboard_page.dart:181:46 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_dashboard_page.dart:640:46 - use_build_context_synchronously
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\manager_user_management_page.dart:117:21 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:198:46 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:204:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:211:40 - use_build_context_synchronously
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\manager_user_management_page.dart:370:21 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:416:35 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:417:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:423:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:496:46 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:501:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:506:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:536:33 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:537:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\manager_user_management_page.dart:543:38 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\manager_user_management_page.dart:714:66 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\manager_user_management_page.dart:722:66 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\report_review_page.dart:222:48 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\report_review_page.dart:239:48 - use_build_context_synchronously
+   info - Don't invoke 'print' in production code - lib\services\auth_service.dart:68:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\services\dashboard_service.dart:34:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\services\dashboard_service.dart:37:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\services\profile_service.dart:106:5 - avoid_print
+   info - Dangling library doc comment - lib\services\report_generation_service.dart:1:1 - dangling_library_doc_comments
+
+flutter : 37 issues found. 
+(ran in 1.8s)
+At line:1 char:1
++ flutter analyze 2>&1 | 
+Out-File -FilePath 
+analyze_current.txt -Encodi 
+...
++ ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (37 is  
+  sues found. (ran in 1.8   
+ s):String) [], RemoteEx    
+ception
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 

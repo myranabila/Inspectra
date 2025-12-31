@@ -12,7 +12,7 @@ def ensure_pdf_for_inspection(inspection):
         if sample_pdf and os.path.exists(sample_pdf):
             inspection.pdf_report_path = sample_pdf
     return inspection
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
@@ -61,6 +61,10 @@ def get_my_tasks(
         "rejection_reason": insp.rejection_reason,
         "rejection_feedback": insp.rejection_feedback,
         "rejection_count": insp.rejection_count,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -127,6 +131,10 @@ def get_inspection_history(
         "rejection_reason": insp.rejection_reason,
         "rejection_feedback": insp.rejection_feedback,
         "rejection_count": insp.rejection_count,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
     
@@ -234,6 +242,10 @@ def get_recent_inspections(
         "equipment_type": insp.equipment_type,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "inspector": insp.inspector.username if insp.inspector else "Unassigned",
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -303,6 +315,10 @@ def get_all_inspections(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -338,6 +354,10 @@ def get_completed_inspections(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -373,6 +393,10 @@ def get_pending_review_inspections(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -416,6 +440,10 @@ def get_completed_this_month(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -493,10 +521,179 @@ async def submit_inspection_report(
             detail=f"Failed to submit inspection: {str(e)}"
         )
 
+@router.post("/inspections/{inspection_id}/submit-visual-report")
+async def submit_visual_inspection_report(
+    inspection_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    inspection_date: str = Form(None),
+    report_type: str = Form(None),
+    equipment_finding: str = Form(None),
+    equipment_recommendation: str = Form(None),
+    # External section with NEW dropdown fields
+    external_finding: str = Form(None),
+    external_condition: str = Form(None),  # NEW
+    external_section_recommendation: str = Form(None),  # NEW
+    external_recommendation: str = Form(None),
+    # Weld section with NEW dropdown fields
+    weld_finding: str = Form(None),
+    weld_condition: str = Form(None),  # NEW
+    weld_section_recommendation: str = Form(None),  # NEW
+    weld_recommendation: str = Form(None),
+    # Internal section with NEW dropdown fields
+    internal_accessible: str = Form("false"),
+    internal_finding: str = Form(None),
+    internal_condition: str = Form(None),  # NEW
+    internal_section_recommendation: str = Form(None),  # NEW
+    internal_recommendation: str = Form(None),
+    # Thickness section with NEW dropdown fields
+    thickness_data: str = Form(None),
+    thickness_condition: str = Form(None),  # NEW
+    thickness_section_recommendation: str = Form(None),  # NEW
+    # Overall summary with NEW field
+    overall_condition: str = Form(None),
+    overall_recommendation: str = Form(None),  # NEW
+    general_recommendation: str = Form(None),
+    photo_sections: str = Form(None),
+    status_field: str = Form(None),
+    pdf_file: UploadFile = File(None),
+):
+    """Submit visual inspection report for manager review"""
+    
+    if current_user.role != models.RoleEnum.inspector:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only inspectors can submit reports"
+        )
+    
+    # Get the inspection
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id,
+        models.Inspection.inspector_id == current_user.id
+    ).first()
+    
+    if not inspection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inspection not found or not assigned to you"
+        )
+    
+    # Build findings string from all sections
+    findings_parts = []
+    if external_finding:
+        findings_parts.append(f"External: {external_finding}")
+    if weld_finding:
+        findings_parts.append(f"Weld: {weld_finding}")
+    if internal_accessible and internal_accessible.lower() == "true" and internal_finding:
+        findings_parts.append(f"Internal: {internal_finding}")
+    if equipment_finding:
+        findings_parts.append(f"Equipment: {equipment_finding}")
+    
+    findings = "\n".join(findings_parts) if findings_parts else "Visual inspection completed."
+    
+    # Build recommendations string
+    rec_parts = []
+    if external_recommendation:
+        rec_parts.append(f"External: {external_recommendation}")
+    if weld_recommendation:
+        rec_parts.append(f"Weld: {weld_recommendation}")
+    if internal_accessible and internal_accessible.lower() == "true" and internal_recommendation:
+        rec_parts.append(f"Internal: {internal_recommendation}")
+    if equipment_recommendation:
+        rec_parts.append(f"Equipment: {equipment_recommendation}")
+    if general_recommendation:
+        rec_parts.append(f"General: {general_recommendation}")
+    
+    recommendations = "\n".join(rec_parts) if rec_parts else "Continue routine inspection schedule."
+    
+    # Update inspection
+    inspection.report_findings = findings
+    inspection.report_recommendations = recommendations
+    inspection.status = models.InspectionStatusEnum.pending_review
+    inspection.completion_date = date.today()
+    
+    # NEW: Save per-section inspector fields
+    # External section
+    inspection.external_finding = external_finding
+    inspection.external_condition = external_condition  # NEW
+    inspection.external_section_recommendation = external_section_recommendation  # NEW
+    inspection.external_recommendation = external_recommendation
+    # Weld section
+    inspection.weld_finding = weld_finding
+    inspection.weld_condition = weld_condition  # NEW
+    inspection.weld_section_recommendation = weld_section_recommendation  # NEW
+    inspection.weld_recommendation = weld_recommendation
+    # Internal section
+    if internal_accessible and internal_accessible.lower() == "true":
+        inspection.internal_finding = internal_finding
+        inspection.internal_condition = internal_condition  # NEW
+        inspection.internal_section_recommendation = internal_section_recommendation  # NEW
+        inspection.internal_recommendation = internal_recommendation
+    else:
+        inspection.internal_finding = None
+        inspection.internal_condition = None
+        inspection.internal_section_recommendation = None
+        inspection.internal_recommendation = None
+    # Thickness section
+    inspection.thickness_condition = thickness_condition  # NEW
+    inspection.thickness_section_recommendation = thickness_section_recommendation  # NEW
+    # Overall summary
+    inspection.overall_finding = overall_condition  # Temporarily using overall_condition field
+    inspection.overall_recommendation = overall_recommendation  # NEW
+    inspection.additional_comments = general_recommendation  # Using general_recommendation as additional comments
+    inspection.general_recommendation = general_recommendation
+    
+    # Add notes with overall condition
+    if overall_condition:
+        inspection.notes = (inspection.notes or "") + f"\n[Overall Condition: {overall_condition}]"
+    
+    # Save the uploaded PDF report (the actual report generated by the inspector)
+    try:
+        reports_dir = Path("reports/generated")
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"inspection_{inspection_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        pdf_path = reports_dir / filename
+        
+        # PRIORITY 1: Use the uploaded PDF from frontend (the actual inspector's report)
+        if pdf_file is not None and pdf_file.filename:
+            print(f"[PDF] Saving uploaded PDF: {pdf_file.filename}")
+            content = await pdf_file.read()
+            with open(pdf_path, 'wb') as f:
+                f.write(content)
+            inspection.pdf_report_path = str(pdf_path)
+            print(f"[PDF] Saved {len(content)} bytes to {pdf_path}")
+        else:
+            # FALLBACK: Copy a sample PDF if no file was uploaded
+            print("[PDF] No PDF uploaded, using sample fallback")
+            sample_pdf = Path("reports/sample_pdfs/sample_pending_review.pdf")
+            if sample_pdf.exists():
+                shutil.copy(sample_pdf, pdf_path)
+                inspection.pdf_report_path = str(pdf_path)
+    except Exception as pdf_error:
+        print(f"Warning: Could not save PDF: {pdf_error}")
+        # Continue without PDF - don't fail the submission
+    
+    try:
+        db.commit()
+        db.refresh(inspection)
+        
+        return {
+            "message": "Visual inspection report submitted successfully",
+            "inspection_id": inspection.id,
+            "status": inspection.status.value,
+            "pdf_path": inspection.pdf_report_path
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit inspection: {str(e)}"
+        )
+
 @router.get("/inspections/{inspection_id}/pdf")
 def get_inspection_pdf(
     inspection_id: int,
-    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Download PDF report for an inspection. Ensures a sample PDF exists if missing."""
@@ -553,5 +750,9 @@ def get_scheduled(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "require_external": insp.require_external,
+        "require_weld": insp.require_weld,
+        "require_internal": insp.require_internal,
+        "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]

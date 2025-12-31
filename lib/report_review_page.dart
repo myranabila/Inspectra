@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/report_service.dart';
+import 'theme/app_theme.dart';
 
 class ReportReviewPage extends StatelessWidget {
   const ReportReviewPage({super.key});
@@ -96,7 +97,7 @@ class ReportReviewPage extends StatelessWidget {
                       ElevatedButton(
                         onPressed: () {},
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
+                          backgroundColor: AppTheme.primaryRed,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text('Full Preview'),
@@ -130,7 +131,7 @@ class ReportReviewPage extends StatelessWidget {
                             const TabBar(
                               labelColor: Colors.black,
                               unselectedLabelColor: Colors.grey,
-                              indicatorColor: Colors.purple,
+                              indicatorColor: AppTheme.primaryRed,
                               tabs: [
                                 Tab(text: 'Report Content'),
                                 Tab(text: 'Comments'),
@@ -241,7 +242,7 @@ class ReportReviewPage extends StatelessWidget {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+                          backgroundColor: AppTheme.primaryRed,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text('Approve'),

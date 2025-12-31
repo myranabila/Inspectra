@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
+import 'widgets/collapsible_sidebar.dart';
 
 class InspectionsListPage extends StatefulWidget {
   final String title;
@@ -17,64 +19,37 @@ class InspectionsListPage extends StatefulWidget {
   State<InspectionsListPage> createState() => _InspectionsListPageState();
 }
 
-class _InspectionsListPageState extends State<InspectionsListPage> {
+class _InspectionsListPageState extends State<InspectionsListPage> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   List<dynamic> _inspections = [];
   String? _error;
+  
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
+    _fadeAnimation = CurvedAnimation(parent: _animationController, curve: Curves.easeOut);
     _loadInspections();
   }
 
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadInspections() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    setState(() { _isLoading = true; _error = null; });
 
     try {
       final inspections = await widget.fetchFunction();
-      setState(() {
-        _inspections = inspections;
-        _isLoading = false;
-      });
+      setState(() { _inspections = inspections; _isLoading = false; });
+      _animationController.forward();
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return Colors.green;
-      case 'pending_review':
-        return Colors.purple;
-      case 'rejected':
-        return Colors.red;
-      case 'scheduled':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _formatStatus(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return 'Completed';
-      case 'pending_review':
-        return 'Pending Review';
-      case 'rejected':
-        return 'Rejected';
-      case 'scheduled':
-        return 'Scheduled';
-      default:
-        return status;
+      setState(() { _error = e.toString().replaceAll('Exception: ', ''); _isLoading = false; });
     }
   }
 
@@ -92,283 +67,199 @@ class _InspectionsListPageState extends State<InspectionsListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundGrey,
-      appBar: AppBar(
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (!_isLoading && _error == null)
-              Text(
-                '${_inspections.length} ${_inspections.length == 1 ? 'record' : 'records'}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
+      body: Row(
+        children: [
+          _buildSidebar(),
+          Expanded(
+            child: Column(
+              children: [
+                _buildTopBar(),
+                Expanded(
+                  child: _isLoading ? _buildLoading() : _error != null ? _buildError() : _buildContent(),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return const CollapsibleSidebar(
+      currentPage: 'inspections',
+      isMainPage: false, // This is a filtered view/sub-page
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: widget.headerColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+            child: Icon(Icons.assignment_rounded, color: widget.headerColor, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(widget.title, style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                    const SizedBox(width: 12),
+                    if (!_isLoading)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: widget.headerColor, borderRadius: BorderRadius.circular(10)),
+                        child: Text('${_inspections.length}', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('View and manage inspections', style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(color: AppTheme.primaryRed.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            child: IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadInspections, tooltip: 'Refresh', color: AppTheme.primaryRed),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoading() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(width: 48, height: 48, child: CircularProgressIndicator(strokeWidth: 3, color: AppTheme.primaryRed)),
+          const SizedBox(height: 24),
+          Text('Loading inspections...', style: GoogleFonts.inter(color: AppTheme.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(20)),
+            child: const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFDC2626)),
+          ),
+          const SizedBox(height: 24),
+          Text('Failed to load inspections', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(_error!, style: GoogleFonts.inter(color: AppTheme.textSecondary)),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadInspections,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryRed, foregroundColor: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_inspections.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 100, height: 100,
+              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(24)),
+              child: Icon(Icons.assignment_outlined, size: 48, color: Colors.grey.shade400),
+            ),
+            const SizedBox(height: 24),
+            Text('No inspections found', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600)),
           ],
         ),
-        backgroundColor: widget.headerColor,
-        foregroundColor: Colors.white,
+      );
+    }
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(32),
+        itemCount: _inspections.length,
+        itemBuilder: (context, index) => _buildInspectionCard(_inspections[index]),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
+    );
+  }
+
+  Widget _buildInspectionCard(dynamic inspection) {
+    final status = inspection['status'] as String? ?? 'scheduled';
+    final statusColor = AppTheme.getStatusColor(status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: AppTheme.softShadow),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            // Navigate to inspection detail
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Container(
+                  width: 48, height: 48,
+                  decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(AppTheme.getStatusIcon(status), color: statusColor, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red.shade300,
-                      ),
-                      const SizedBox(height: 16),
-                      Text('Error loading data', style: AppTheme.headingSmall),
-                      const SizedBox(height: 8),
                       Text(
-                        _error!,
-                        style: AppTheme.bodyMedium,
-                        textAlign: TextAlign.center,
+                        inspection['title'] ?? 'Untitled',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15, color: AppTheme.textPrimary),
                       ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _loadInspections,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                        style: AppTheme.primaryButton,
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 14, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                          Text(inspection['location'] ?? 'N/A', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary)),
+                          const SizedBox(width: 16),
+                          Icon(Icons.calendar_today_outlined, size: 14, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                          Text(_formatDate(inspection['scheduled_date']), style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary)),
+                        ],
                       ),
                     ],
                   ),
-                )
-              : _inspections.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.inbox_outlined,
-                            size: 64,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No records found',
-                            style: AppTheme.headingSmall.copyWith(
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'There are no inspections in this category',
-                            style: AppTheme.bodyMedium.copyWith(
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadInspections,
-                      color: widget.headerColor,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _inspections.length,
-                        itemBuilder: (context, index) {
-                          final inspection = _inspections[index];
-
-                          return Card(
-                            elevation: 1,
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: InkWell(
-                              onTap: () {
-                                // TODO: Navigate to inspection details
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Title + status chip
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            inspection['title'] ?? 'Untitled',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getStatusColor(
-                                              inspection['status'] ?? '',
-                                            ).withOpacity(0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            border: Border.all(
-                                              color: _getStatusColor(
-                                                inspection['status'] ?? '',
-                                              ),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _formatStatus(
-                                              inspection['status'] ?? '',
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: _getStatusColor(
-                                                inspection['status'] ?? '',
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    const SizedBox(height: 8),
-
-                                    // Location
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.location_on_outlined,
-                                          size: 16,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            inspection['location'] ??
-                                                'No location',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    const SizedBox(height: 4),
-
-                                    // Dates
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.calendar_today_outlined,
-                                          size: 16,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Scheduled: ${_formatDate(inspection['scheduled_date'])}',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                        if (inspection['completion_date'] !=
-                                            null) ...[
-                                          const SizedBox(width: 16),
-                                          Icon(
-                                            Icons.check_circle_outline,
-                                            size: 16,
-                                            color: Colors.green.shade600,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Completed: ${_formatDate(inspection['completion_date'])}',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.green.shade600,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-
-                                    // Notes (optional)
-                                    if (inspection['notes'] != null &&
-                                        inspection['notes']
-                                            .toString()
-                                            .isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Icon(
-                                              Icons.note_outlined,
-                                              size: 16,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                inspection['notes'],
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: Colors.grey.shade700,
-                                                ),
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-
-                                    // View PDF button (optional)
-                                    if (inspection['status'] ==
-                                            'pending_review' ||
-                                        inspection['status'] == 'completed')
-                                      Align(
-                                        alignment: Alignment.centerRight,
-                                        child: TextButton.icon(
-                                          icon: const Icon(
-                                            Icons.picture_as_pdf,
-                                            color: Colors.red,
-                                          ),
-                                          label: const Text('View PDF'),
-                                          onPressed: () async {
-                                            // TODO: Implement PDF viewing with url_launcher
-                                          },
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                ),
+                AppTheme.statusBadge(status),
+                const SizedBox(width: 12),
+                Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -181,7 +181,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             leading: CircleAvatar(
-              backgroundColor: _getRoleColor(role).withOpacity(0.15),
+              backgroundColor: _getRoleColor(role).withValues(alpha: 0.15),
               child: Icon(
                 role == 'manager' ? Icons.manage_accounts : Icons.engineering,
                 color: _getRoleColor(role),
@@ -249,8 +249,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 const PopupMenuItem<String>(
                   value: 'deactivate',
                   child: ListTile(
-                    leading: Icon(Icons.power_settings_new, color: Colors.orange),
-                    title: Text('Deactivate', style: TextStyle(color: Colors.orange)),
+                    leading: Icon(Icons.power_settings_new, color: AppTheme.accentYellow),
+                    title: Text('Deactivate', style: TextStyle(color: AppTheme.accentYellow)),
                   ),
                 ),
                 const PopupMenuDivider(),
@@ -275,7 +275,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
       case 'manager':
         return Colors.purple;
       case 'inspector':
-        return Colors.blue;
+        return AppTheme.accentYellow;
       default:
         return Colors.grey;
     }

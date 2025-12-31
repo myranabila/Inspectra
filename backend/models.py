@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, TIMESTAMP, Text, Date, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Enum, TIMESTAMP, Text, Date, ForeignKey, func, Boolean
 from sqlalchemy.orm import relationship
 from db import Base
 import enum
@@ -26,6 +26,29 @@ class ReminderStatusEnum(str, enum.Enum):
     pending = "pending"
     sent = "sent"
     dismissed = "dismissed"
+
+# Role-based system enums
+class EquipmentTypeEnum(str, enum.Enum):
+    reactor = "Reactor"
+    pressure_vessel = "Pressure Vessel"
+    heat_exchanger = "Heat Exchanger"
+    storage_tank = "Storage Tank"
+    tower = "Tower"
+
+class AreaEnum(str, enum.Enum):
+    plant_1 = "Plant 1"
+    plant_2 = "Plant 2"
+    utility_area = "Utility Area"
+    offsite_area = "Offsite Area"
+    process_area = "Process Area"
+
+class ConditionEnum(str, enum.Enum):
+    satisfactory = "Satisfactory"
+    observation = "Observation"
+
+class RecommendationEnum(str, enum.Enum):
+    nil = "Nil"
+    monitor = "Monitor"
 
 class Location(Base):
     __tablename__ = "locations"
@@ -62,17 +85,55 @@ class User(Base):
 class Inspection(Base):
     __tablename__ = "inspections"
     id = Column(Integer, primary_key=True, index=True)
+    
+    # AUTO-GENERATED (READ-ONLY)
+    inspection_id_display = Column(String(50), unique=True, nullable=True)
+    report_number = Column(String(50), unique=True, nullable=True)
+    
+    # MANAGER FIELDS
     title = Column(String(200), nullable=False)
-    location = Column(String(200))
+    location = Column(String(200))  # DEPRECATED - kept for backward compatibility
+    area = Column(String(100), nullable=True)  # NEW - replaces location
     equipment_id = Column(String(100), nullable=True)  # Equipment Tag Number
-    equipment_type = Column(String(200), nullable=True)  # Equipment Type/Description
+    equipment_type = Column(String(200), nullable=True)  # Equipment Type
     status = Column(Enum(InspectionStatusEnum), default=InspectionStatusEnum.scheduled, nullable=False)
-    scheduled_date = Column(Date, nullable=True)
+    scheduled_date = Column(Date, nullable=True)  # Due Date
     completion_date = Column(Date, nullable=True)
-    notes = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)  # DEPRECATED - use additional_comments
     inspector_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     
-    # Report fields
+    # Required Inspection Sections (Manager Selects)
+    require_external = Column(Boolean, default=True, nullable=False)
+    require_weld = Column(Boolean, default=False, nullable=False)
+    require_internal = Column(Boolean, default=False, nullable=False)
+    require_thickness = Column(Boolean, default=False, nullable=False)
+    
+    # EXTERNAL VISUAL INSPECTION - Inspector Fields
+    external_finding = Column(Text, nullable=True)
+    external_condition = Column(String(50), nullable=True)
+    external_recommendation = Column(String(50), nullable=True)
+    
+    # WELD VISUAL INSPECTION - Inspector Fields
+    weld_finding = Column(Text, nullable=True)
+    weld_condition = Column(String(50), nullable=True)
+    weld_recommendation = Column(String(50), nullable=True)
+    
+    # INTERNAL INSPECTION - Inspector Fields
+    internal_finding = Column(Text, nullable=True)
+    internal_condition = Column(String(50), nullable=True)
+    internal_recommendation = Column(String(50), nullable=True)
+    
+    # THICKNESS INSPECTION - Inspector Fields
+    thickness_finding = Column(Text, nullable=True)
+    thickness_condition = Column(String(50), nullable=True)
+    thickness_recommendation = Column(String(50), nullable=True)
+    
+    # OVERALL SUMMARY (Page 1) - Inspector
+    overall_finding = Column(Text, nullable=True)
+    overall_recommendation = Column(Text, nullable=True)
+    additional_comments = Column(Text, nullable=True)
+    
+    # Report fields (existing - backward compatibility)
     pdf_report_path = Column(String(500), nullable=True)
     report_findings = Column(Text, nullable=True)
     report_recommendations = Column(Text, nullable=True)
