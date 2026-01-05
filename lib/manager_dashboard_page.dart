@@ -16,6 +16,7 @@ import 'utils/sidebar_state.dart';
 import 'widgets/time_filter.dart';
 import 'widgets/dashboard_chart_widgets.dart';
 import 'utils/animations_config.dart';
+import 'widgets/defect_frequency_chart.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   const ManagerDashboardPage({super.key});
@@ -30,6 +31,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
   String? _userName;
 
   Map<String, dynamic>? _statsData;
+  bool _showAnalytics = false;
+  List<dynamic> _defectAnalytics = [];
+  bool _loadingAnalytics = false;
+
 
   TimeFilterPeriod _selectedPeriod = TimeFilterPeriod.all;
   
@@ -90,6 +95,24 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
       });
     }
   }
+
+  Future<void> _loadAnalytics() async {
+    setState(() => _loadingAnalytics = true);
+
+    try {
+      final data = await DashboardService.getDefectsByEquipment(
+        period: _selectedPeriod.toShortString(),
+      );
+
+      setState(() {
+        _defectAnalytics = data;
+        _loadingAnalytics = false;
+      });
+    } catch (e) {
+      setState(() => _loadingAnalytics = false);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +188,61 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
               
               // 3. Status Pie Chart - REMOVED AS REQUESTED
               // _buildStatusPieChart(),
-              
+              // ───────── Inspection Analytics ─────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Inspection Analytics',
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      if (!_showAnalytics) {
+                        await _loadAnalytics();
+                      }
+                      setState(() => _showAnalytics = !_showAnalytics);
+                    },
+                    icon: Icon(
+                      _showAnalytics ? Icons.expand_less : Icons.expand_more,
+                      color: AppTheme.primaryRed,
+                    ),
+                    label: Text(
+                      _showAnalytics ? 'Hide Analytics' : 'Show Analytics',
+                      style: TextStyle(color: AppTheme.primaryRed),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              if (_showAnalytics)
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade100),
+                  ),
+                  child: _loadingAnalytics
+                      ? const Center(child: CircularProgressIndicator())
+                      : _defectAnalytics.isEmpty
+                          ? const Center(child: Text('No analytics data available'))
+                          : SizedBox(
+                              height: 260,
+                              child: DefectFrequencyChart(
+                                data: _defectAnalytics,
+                              ),
+                            ),
+                ),
+
+              const SizedBox(height: 32),
+               
             ],
           ),
         ),

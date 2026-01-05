@@ -59,3 +59,6 @@ Thumbs.db
 # ignore any backend env files
 backend/.env
 backend/.env*
+
+# Generated inspection reports
+backend/reports/generated/*.pdf

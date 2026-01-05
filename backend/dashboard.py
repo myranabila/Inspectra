@@ -15,7 +15,7 @@ def ensure_pdf_for_inspection(inspection):
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, text  
 from datetime import datetime, date, timedelta
 from db import get_db
 from auth import get_current_user
@@ -146,7 +146,8 @@ def get_inspection_history(
 def get_start_date_from_period(period: str) -> date | None:
     """Calculate the start date based on the period string."""
     today = date.today()
-    if period == "day":
+
+    if period in ("day", "today"):
         return today
     elif period == "week":
         return today - timedelta(days=today.weekday())
@@ -756,3 +757,48 @@ def get_scheduled(
         "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
+
+@router.get("/analytics/defects")
+def get_defect_analytics(
+    period: str = "all",
+    db: Session = Depends(get_db),
+):
+    start_date = get_start_date_from_period(period)
+
+    sql = """
+    SELECT equipment_type, defect_type, COUNT(*) as count
+    FROM (
+        SELECT equipment_type, external_finding AS defect_type, created_at, status
+        FROM inspections
+        UNION ALL
+        SELECT equipment_type, weld_finding AS defect_type, created_at, status
+        FROM inspections
+        UNION ALL
+        SELECT equipment_type, internal_finding AS defect_type, created_at, status
+        FROM inspections
+        UNION ALL
+        SELECT equipment_type, thickness_finding AS defect_type, created_at, status
+        FROM inspections
+    )
+    WHERE status = 'completed'
+      AND defect_type IS NOT NULL
+      AND defect_type != 'Nil'
+    """
+
+    params = {}
+    if start_date:
+        sql += " AND created_at >= :start_date"
+        params["start_date"] = start_date
+
+    sql += " GROUP BY equipment_type, defect_type"
+
+    result = db.execute(text(sql), params).fetchall()
+
+    return [
+        {
+            "equipment_type": r[0],
+            "defect_type": r[1],
+            "count": r[2],
+        }
+        for r in result
+    ]
