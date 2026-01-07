@@ -178,6 +178,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
                       onPeriodSelected: (period) {
                         setState(() => _selectedPeriod = period);
                         _loadDashboardData();
+                        if (_showAnalytics) {
+                          _loadAnalytics();
+                        }
                       },
                     ),
                 ],
@@ -192,13 +195,26 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Inspection Analytics',
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade700,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Inspection Analytics',
+                        style: GoogleFonts.inter(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
                   TextButton.icon(
                     onPressed: () async {
@@ -209,36 +225,79 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Single
                     },
                     icon: Icon(
                       _showAnalytics ? Icons.expand_less : Icons.expand_more,
-                      color: AppTheme.primaryRed,
+                      color: Colors.blue.shade600,
                     ),
                     label: Text(
                       _showAnalytics ? 'Hide Analytics' : 'Show Analytics',
-                      style: TextStyle(color: AppTheme.primaryRed),
+                      style: TextStyle(color: Colors.blue.shade600),
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                'Analysis of completed inspections based on selected time period.',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 24),
 
               if (_showAnalytics)
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.grey.shade100),
+                    color: const Color(0xFFF9FAFB), // Very light gray background
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
                   ),
-                  child: _loadingAnalytics
-                      ? const Center(child: CircularProgressIndicator())
-                      : _defectAnalytics.isEmpty
-                          ? const Center(child: Text('No analytics data available'))
-                          : SizedBox(
-                              height: 260,
-                              child: DefectFrequencyChart(
-                                data: _defectAnalytics,
-                              ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Defect Frequency by Vessel Type',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
                             ),
+                          ),
+                          Icon(
+                            Icons.bar_chart_rounded,
+                            color: Colors.blue.shade600,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Container(
+                        height: 300,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: _loadingAnalytics
+                            ? const Center(child: CircularProgressIndicator())
+                            : _defectAnalytics.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      'No analytics data available',
+                                      style: GoogleFonts.inter(
+                                          color: Colors.grey.shade500),
+                                    ),
+                                  )
+                                : DefectFrequencyChart(
+                                    data: _defectAnalytics,
+                                  ),
+                      ),
+                    ],
+                  ),
                 ),
 
               const SizedBox(height: 32),

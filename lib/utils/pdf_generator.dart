@@ -34,13 +34,57 @@ class PdfGenerator {
     // Process photos
     final photoSections = reportData['photo_sections'] as Map<String, dynamic>? ?? {};
     final allPhotos = reportData['photos'] as List<dynamic>? ?? [];
+    final equipmentSectionsRaw = reportData['equipment_sections_data'] as List<dynamic>?;
     
     int equipmentCount = photoSections['equipment'] ?? 0;
     int externalCount = photoSections['external'] ?? 0;
     int weldCount = photoSections['weld'] ?? 0;
     int internalCount = photoSections['internal'] ?? 0;
     
-    List<pw.ImageProvider> equipmentImages = await _processPhotos(allPhotos, 0, equipmentCount);
+    // Process Equipment Sections specifically
+    // If equipmentSectionsData is present, use it. Otherwise fall back to legacy flat list logic.
+    List<PhotoWithFinding> equipmentPhotoData = [];
+    
+    if (equipmentSectionsRaw != null && equipmentSectionsRaw.isNotEmpty) {
+       for (var section in equipmentSectionsRaw) {
+          final xFiles = section['photos'] as List<Object?>? ?? [];
+          List<pw.ImageProvider> sectionImages = [];
+          for (var xf in xFiles) {
+             if (xf is XFile) {
+               final bytes = await xf.readAsBytes();
+               sectionImages.add(pw.MemoryImage(bytes));
+             }
+          }
+          
+          List<String> findingLines = (section['findings'] as List<dynamic>? ?? []).cast<String>();
+          List<String> recLines = (section['recommendations'] as List<dynamic>? ?? []).cast<String>();
+          
+          if (sectionImages.isNotEmpty) {
+             equipmentPhotoData.add(PhotoWithFinding(
+               photoNumber: '${section['section_number']}', // Just "1", "2" etc. Sub-labels are handled in layout
+               image: sectionImages.first, // Legacy field, ignored if multiImages is set
+               multiImages: sectionImages, // NEW: List of images for grid
+               finding: findingLines.join('\n'),
+               recommendation: recLines.join('\n'),
+               isSectionGroup: true,
+             ));
+          }
+       }
+    } else {
+      // Legacy fallback
+       List<pw.ImageProvider> equipmentImages = await _processPhotos(allPhotos, 0, equipmentCount);
+       int photoCounter = 1;
+       for (int i = 0; i < equipmentImages.length; i++) {
+        equipmentPhotoData.add(PhotoWithFinding(
+          photoNumber: '${photoCounter}.1',
+          image: equipmentImages[i],
+          finding: reportData['equipment_finding'] ?? 'Equipment in good condition',
+          recommendation: reportData['equipment_recommendation'] ?? 'Nil',
+        ));
+        photoCounter++;
+      }
+    }
+
     List<pw.ImageProvider> externalImages = await _processPhotos(allPhotos, equipmentCount, externalCount);
     List<pw.ImageProvider> weldImages = await _processPhotos(allPhotos, equipmentCount + externalCount, weldCount);
     List<pw.ImageProvider> internalImages = await _processPhotos(allPhotos, equipmentCount + externalCount + weldCount, internalCount);
@@ -114,73 +158,50 @@ class PdfGenerator {
     );
     
     // ========== PAGE 2+: PHOTOS REPORT ==========
-    if (allPhotos.isNotEmpty) {
-      // Collect all photos with their findings
-      List<PhotoWithFinding> photosWithFindings = [];
-      int photoCounter = 1;
-      
-      // Equipment photos
-      for (int i = 0; i < equipmentImages.length; i++) {
+    List<PhotoWithFinding> photosWithFindings = [];
+    photosWithFindings.addAll(equipmentPhotoData); // Add new structured sections
+
+    int photoCounter = equipmentPhotoData.length + 1;
+
+    // External photos - Legacy block removed as they are now part of equipmentPhotoData
+    // via 'equipment_sections_data' in _submitReport
+    // if (requireExternal) { ... }
+    
+    // Weld photos
+    if (requireWeld) {
+      for (int i = 0; i < weldImages.length; i++) {
+        String finding = reportData['weld_finding'] ?? 'Welds appear sound';
+        if (reportData['weld_condition'] != null) {
+          finding = '${reportData['weld_condition']}: $finding';
+        }
         photosWithFindings.add(PhotoWithFinding(
-          photoNumber: '${photoCounter}.1',
-          image: equipmentImages[i],
-          finding: reportData['equipment_finding'] ?? 'Equipment in good condition',
-          recommendation: reportData['equipment_recommendation'] ?? 'Nil',
+          photoNumber: photoCounter.toString(),
+          image: weldImages[i],
+          finding: finding,
+          recommendation: reportData['weld_section_recommendation'] ?? 'Nil',
         ));
         photoCounter++;
       }
-      
-      // External photos
-      if (requireExternal) {
-        for (int i = 0; i < externalImages.length; i++) {
-          String finding = reportData['external_finding'] ?? 'No visible defects';
-          if (reportData['external_condition'] != null) {
-            finding = '${reportData['external_condition']}: $finding';
-          }
-          photosWithFindings.add(PhotoWithFinding(
-            photoNumber: photoCounter.toString(),
-            image: externalImages[i],
-            finding: finding,
-            recommendation: reportData['external_section_recommendation'] ?? 'Nil',
-          ));
-          photoCounter++;
+    }
+    
+    // Internal photos
+    if (requireInternal && (reportData['internal_accessible'] ?? false)) {
+      for (int i = 0; i < internalImages.length; i++) {
+        String finding = reportData['internal_finding'] ?? 'Internal surfaces acceptable';
+        if (reportData['internal_condition'] != null) {
+          finding = '${reportData['internal_condition']}: $finding';
         }
+        photosWithFindings.add(PhotoWithFinding(
+          photoNumber: photoCounter.toString(),
+          image: internalImages[i],
+          finding: finding,
+          recommendation: reportData['internal_section_recommendation'] ?? 'Nil',
+        ));
+        photoCounter++;
       }
-      
-      // Weld photos
-      if (requireWeld) {
-        for (int i = 0; i < weldImages.length; i++) {
-          String finding = reportData['weld_finding'] ?? 'Welds appear sound';
-          if (reportData['weld_condition'] != null) {
-            finding = '${reportData['weld_condition']}: $finding';
-          }
-          photosWithFindings.add(PhotoWithFinding(
-            photoNumber: photoCounter.toString(),
-            image: weldImages[i],
-            finding: finding,
-            recommendation: reportData['weld_section_recommendation'] ?? 'Nil',
-          ));
-          photoCounter++;
-        }
-      }
-      
-      // Internal photos
-      if (requireInternal && (reportData['internal_accessible'] ?? false)) {
-        for (int i = 0; i < internalImages.length; i++) {
-          String finding = reportData['internal_finding'] ?? 'Internal surfaces acceptable';
-          if (reportData['internal_condition'] != null) {
-            finding = '${reportData['internal_condition']}: $finding';
-          }
-          photosWithFindings.add(PhotoWithFinding(
-            photoNumber: photoCounter.toString(),
-            image: internalImages[i],
-            finding: finding,
-            recommendation: reportData['internal_section_recommendation'] ?? 'Nil',
-          ));
-          photoCounter++;
-        }
-      }
-      
+    }
+    
+    if (photosWithFindings.isNotEmpty) {
       // Generate photo pages
       final photoPages = _generatePhotoPages(
         photosWithFindings: photosWithFindings,
@@ -817,6 +838,103 @@ class PdfGenerator {
   }
 
   static pw.Widget _buildPhotoRow(PhotoWithFinding photoData) {
+    // If it's a section group with multiple photos
+    if (photoData.isSectionGroup && photoData.multiImages != null && photoData.multiImages!.isNotEmpty) {
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(bottom: 15),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.black),
+        ),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // Photo section (Left Column)
+            pw.Container(
+              width: 300, // Slightly wider for 3 photos
+              padding: const pw.EdgeInsets.all(8),
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(right: pw.BorderSide(color: PdfColors.black)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(
+                    color: PdfColors.black,
+                    padding: const pw.EdgeInsets.all(4),
+                    child: pw.Text(
+                      'Photo ${photoData.photoNumber}',
+                      style: pw.TextStyle(
+                          fontSize: 9,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.white),
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  // Grid of photos
+                  pw.Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: List.generate(photoData.multiImages!.length, (index) {
+                       final img = photoData.multiImages![index];
+                       final label = '${photoData.photoNumber}.${index + 1}';
+                       return pw.Column(
+                         children: [
+                            pw.Container(
+                              width: 90, // Fit 3 in ~300 width
+                              height: 90,
+                              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey)),
+                              child: pw.Image(img, fit: pw.BoxFit.cover),
+                            ),
+                            pw.SizedBox(height: 2),
+                            pw.Container(
+                               padding: const pw.EdgeInsets.all(2),
+                               decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.red)),
+                               child: pw.Text(label, style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                            )
+                         ],
+                       );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+
+            // Finding & Recommendation section (Right Column)
+            pw.Expanded(
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Finding:',
+                        style: pw.TextStyle(
+                            fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      photoData.finding,
+                      style:
+                          const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Text('Recommendation:',
+                        style: pw.TextStyle(
+                            fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      photoData.recommendation,
+                      style:
+                          const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default Fallback (Legacy single photo)
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 15),
       decoration: pw.BoxDecoration(
@@ -840,7 +958,10 @@ class PdfGenerator {
                   padding: const pw.EdgeInsets.all(4),
                   child: pw.Text(
                     'Photo ${photoData.photoNumber}',
-                    style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                    style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white),
                   ),
                 ),
                 pw.SizedBox(height: 8),
@@ -851,7 +972,7 @@ class PdfGenerator {
               ],
             ),
           ),
-          
+
           // Finding & Recommendation section
           pw.Expanded(
             child: pw.Container(
@@ -859,18 +980,24 @@ class PdfGenerator {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Finding:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Finding:',
+                      style: pw.TextStyle(
+                          fontSize: 9, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 4),
                   pw.Text(
                     photoData.finding,
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
+                    style:
+                        const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
                   ),
                   pw.SizedBox(height: 10),
-                  pw.Text('Recommendation:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Recommendation:',
+                      style: pw.TextStyle(
+                          fontSize: 9, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 4),
                   pw.Text(
                     photoData.recommendation,
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
+                    style:
+                        const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
                   ),
                 ],
               ),
@@ -885,14 +1012,18 @@ class PdfGenerator {
 // Helper class to store photo with its finding
 class PhotoWithFinding {
   final String photoNumber;
-  final pw.ImageProvider image;
+  final pw.ImageProvider image; // Primary image (legacy)
+  final List<pw.ImageProvider>? multiImages; // NEW: support for multiple images
   final String finding;
   final String recommendation;
+  final bool isSectionGroup; // NEW: flag to indicate this is a section group
 
   PhotoWithFinding({
     required this.photoNumber,
     required this.image,
     required this.finding,
     required this.recommendation,
+    this.multiImages,
+    this.isSectionGroup = false,
   });
 }

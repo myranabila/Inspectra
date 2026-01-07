@@ -803,7 +803,9 @@ class _MyTasksPageState extends State<MyTasksPage> {
                 const SizedBox(height: 22),
                 Row(
                   children: [
-                    _buildTaskInfoChip(Icons.precision_manufacturing_outlined, 'Equipment', '${task['equipment_id'] ?? 'N/A'}'),
+                    _buildTaskInfoChip(Icons.precision_manufacturing_outlined, 'Equipment Tag Number', '${task['equipment_id'] ?? 'N/A'}'),
+                    const SizedBox(width: 16),
+                    _buildTaskInfoChip(Icons.precision_manufacturing_outlined, 'Equipment Type', '${task['equipment_type'] ?? 'N/A'}'),
                     const SizedBox(width: 16),
                     _buildTaskInfoChip(Icons.calendar_today_outlined, 'Due Date', _formatDate(task['scheduled_date'])),
                     const Spacer(),

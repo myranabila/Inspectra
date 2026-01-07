@@ -46,17 +46,45 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     'Nil',
   ];
 
-  // Section 1: Equipment Identification (always required)
-  List<XFile> _equipmentPhotos = [];
-  String _equipmentFinding = '';
-  String _equipmentRecommendation = '';
+  // Section 1: Equipment Identification  // EQUIPMENT SECTION STATE
+  List<InspectionSectionData> _equipmentSections = [
+    InspectionSectionData(sectionNumber: 1)
+  ];
 
-  // Section 2: External Visual
-  List<XFile> _externalPhotos = [];
-  String? _externalFinding; // Changed to nullable to allow validation
-  String? _externalCondition; // NEW: Satisfactory/Observation
-  String _externalRecommendation = '';
-  String? _externalSectionRecommendation; // NEW: Nil/Monitor
+  // EXTERNAL VISUAL SECTION STATE
+  List<ExternalSectionData> _externalSections = [
+    ExternalSectionData(sectionNumber: 1) // Initialize with 1 section by default
+  ];
+
+  final List<String> _externalComponents = [
+    'Concrete foundation and skirt / support legs',
+    'Anchor Bolts',
+    'Earthing Cable',
+    'External Shell',
+    'Bottom Dish Head',
+    'Top Dish Head',
+    'Lifting Lugs',
+    'Manhole',
+    'Manhole Cover',
+    'Davit Arm',
+    'Attachment Nozzles',
+    'Pressure Gauge',
+  ];
+
+  final Map<String, String> _externalSatisfactorySentences = {
+    'Concrete foundation and skirt / support legs': 'observed in satisfactory condition with no significant damage or abnormalities.',
+    'Anchor Bolts': 'noted secured, intact, and tightened with no sign of degradation or looseness.',
+    'Earthing Cable': 'observed securely intact and in satisfactory condition.',
+    'External Shell': 'found in good condition with insulation or coating intact and no visible abnormalities.',
+    'Bottom Dish Head': 'observed in satisfactory condition with no evidence of significant damage.',
+    'Top Dish Head': 'found in satisfactory profile with no sign of damage or deformation.',
+    'Lifting Lugs': 'noted in serviceable condition and securely attached.',
+    'Manhole': 'observed in serviceable condition with no deformation.',
+    'Manhole Cover': 'observed in serviceable condition with no deformation.',
+    'Davit Arm': 'observed in serviceable condition with no deformation.',
+    'Attachment Nozzles': 'generally found in satisfactory condition.',
+    'Pressure Gauge': 'observed in serviceable condition with no abnormalities.',
+  };
 
   // Section 3: Weld Visual
   List<XFile> _weldPhotos = [];
@@ -74,6 +102,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
   String? _internalSectionRecommendation; // NEW: Nil/Monitor
 
   // Section 5: Thickness Measurement
+  List<XFile> _thicknessPhotos = []; // ADDED: Thickness photos
   List<Map<String, String>> _thicknessData = [];
   String? _thicknessFinding;
   String? _thicknessCondition; // NEW: Satisfactory/Observation
@@ -98,6 +127,27 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     _requireThickness = widget.inspection['require_thickness'] ?? false;
   }
 
+  // Standardized Options for Equipment Identification
+  final List<String> _equipmentFindingOptions = [
+    'Nameplate tag in a good condition.',
+    'Nameplate tag in a bad condition.',
+    'PMT number in a good condition.',
+    'PMT number in a bad condition.',
+    'Equipment number in a good condition.',
+    'Equipment number in a bad condition.',
+    'General view of this equipment in a good condition.',
+    'General view of this equipment in a bad condition.',
+    'Other (please describe it)',
+  ];
+
+  final List<String> _equipmentRecommendationOptions = [
+    'Nil.',
+    'To be monitored during next inspection',
+    'Repaint tag number',
+    'Replace nameplate',
+    'Other (please describe it)',
+  ];
+
   Future<void> _selectDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -108,7 +158,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     if (picked != null) setState(() => _inspectionDate = picked);
   }
 
-  Future<void> _pickPhotos(String section) async {
+  Future<void> _pickPhotos(String section, {int? sectionIndex}) async {
     try {
       // Try multi-image picker first (works on mobile)
       List<XFile>? picked;
@@ -131,10 +181,40 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
         setState(() {
           switch (section) {
             case 'equipment':
-              _equipmentPhotos.addAll(picked!);
+              if (sectionIndex != null && sectionIndex < _equipmentSections.length) {
+                // Limit to 3 photos per section
+                final currentCount = _equipmentSections[sectionIndex].photos.length;
+                final availableSlots = 3 - currentCount;
+                if (availableSlots > 0) {
+                   _equipmentSections[sectionIndex].photos.addAll(picked!.take(availableSlots));
+                } else {
+                   if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Max 3 photos per section'), backgroundColor: Colors.orange),
+                    );
+                   }
+                   return; // Exit early
+                }
+              }
               break;
             case 'external':
-              _externalPhotos.addAll(picked!);
+              if (sectionIndex != null && sectionIndex < _externalSections.length) {
+                final currentCount = _externalSections[sectionIndex].photos.length;
+                final availableSlots = 3 - currentCount;
+                if (availableSlots > 0) {
+                   _externalSections[sectionIndex].photos.addAll(picked!.take(availableSlots));
+                } else {
+                   if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Max 3 photos per section'), backgroundColor: Colors.orange),
+                    );
+                   }
+                   return;
+                }
+              } else {
+                 // Fallback if no index provided (shouldn't happen with new UI)
+                 // _externalPhotos legacy support removed
+              }
               break;
             case 'weld':
               _weldPhotos.addAll(picked!);
@@ -169,14 +249,18 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     }
   }
 
-  void _removePhoto(String section, int index) {
+  void _removePhoto(String section, int index, {int? sectionIndex}) {
     setState(() {
       switch (section) {
         case 'equipment':
-          _equipmentPhotos.removeAt(index);
+          if (sectionIndex != null && sectionIndex < _equipmentSections.length) {
+             _equipmentSections[sectionIndex].photos.removeAt(index);
+          }
           break;
         case 'external':
-          _externalPhotos.removeAt(index);
+           if (sectionIndex != null && sectionIndex < _externalSections.length) {
+             _externalSections[sectionIndex].photos.removeAt(index);
+          }
           break;
         case 'weld':
           _weldPhotos.removeAt(index);
@@ -199,6 +283,82 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     setState(() => _thicknessData.removeAt(index));
   }
 
+  void _addEquipmentSection() {
+    setState(() {
+      int nextSectionNum = _equipmentSections.isEmpty
+          ? 1
+          : _equipmentSections.last.sectionNumber + 1;
+      _equipmentSections.add(InspectionSectionData(sectionNumber: nextSectionNum));
+      
+      // Update External sections to follow sequence
+      _updateExternalSectionNumbers();
+    });
+  }
+
+  void _removeEquipmentSection(int index) {
+    setState(() {
+      _equipmentSections.removeAt(index);
+      // Renumber sections
+      for (int i = 0; i < _equipmentSections.length; i++) {
+        _equipmentSections[i].sectionNumber = i + 1;
+      }
+      // Update External sections to follow sequence
+      _updateExternalSectionNumbers();
+    });
+  }
+
+  // EXTERNAL SECTION MANAGEMENT helpers
+  void _addExternalSection() {
+    setState(() {
+       // Start strictly AFTER the last equipment section
+      int startNum = _equipmentSections.isEmpty ? 1 : _equipmentSections.last.sectionNumber + 1;
+      int nextSectionNum = _externalSections.isEmpty
+          ? startNum
+          : _externalSections.last.sectionNumber + 1;
+          
+      _externalSections.add(ExternalSectionData(sectionNumber: nextSectionNum));
+    });
+  }
+
+  void _removeExternalSection(int index) {
+    setState(() {
+      _externalSections.removeAt(index);
+      _updateExternalSectionNumbers();
+    });
+  }
+  
+  void _updateExternalSectionNumbers() {
+      int startNum = _equipmentSections.isEmpty ? 1 : _equipmentSections.last.sectionNumber + 1;
+      for (int i = 0; i < _externalSections.length; i++) {
+        _externalSections[i].sectionNumber = startNum + i;
+      }
+  }
+
+  // Helper to generate text for PDF report based on component + defect + condition
+  String _generateExternalFindingText(ExternalSectionData section) {
+    if (section.componentName == null) return "Component not specified";
+    
+    // CASE 1: Satisfactory (Nil defect)
+    if ((section.defectType == 'Nil' || section.defectType == null) &&
+        (section.condition == 'Satisfactory' || section.condition == null)) {
+       return '${section.componentName} – ${_externalSatisfactorySentences[section.componentName] ?? "observed in satisfactory condition."}';
+    }
+
+    // CASE 2: Defect Present
+    // "minor galvanic corrosion on bolting..."
+    // Construct: [Component] – [Defect] observed at [Location?]. Condition: [Condition].
+    String defect = section.defectType ?? 'Defect';
+    String cond = section.condition ?? 'Observation';
+    
+    // Custom logic for Attachment Nozzles example requested by user
+    if (section.componentName == 'Attachment Nozzles' && defect != 'Nil') {
+       return 'Attachment Nozzles – minor $defect on bolting due to dissimilar materials noted ($cond condition).';
+    }
+
+    // Generic fallback for others
+    return '${section.componentName} – $defect observed. Condition noted as $cond.';
+  }
+
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -208,42 +368,63 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     List<String> missingItems = [];
 
     // Equipment Identification (always required)
-    if (_equipmentPhotos.isEmpty) {
+    // Flatten consolidated list of all photos
+    List<XFile> allEquipmentPhotos = [];
+    for (var s in _equipmentSections) {
+      allEquipmentPhotos.addAll(s.photos);
+    }
+
+    if (allEquipmentPhotos.isEmpty) {
       missingItems.add('Equipment Identification: At least 1 photo required');
     }
 
-    // External Visual - only if required by manager
-    if (_requireExternal) {
-      if (_externalFinding == null) {
-        missingItems.add('External Visual: Finding is required');
-      }
-      if (_externalCondition == null) {
-        missingItems.add('External Visual: Condition is required');
-      }
-      if (_externalSectionRecommendation == null) {
-        missingItems.add('External Visual: Section Recommendation is required');
-      }
-      if (_externalPhotos.isEmpty) {
-        missingItems.add('External Visual: At least 1 photo required');
-      }
-    }
-
     // Weld Visual - only if required by manager
-    if (_requireWeld) {
-      if (_weldFinding == null) {
-        missingItems.add('Weld Visual: Finding is required');
+      // Validating WELD Section
+      // Only valid if photos are added
+      if (_weldPhotos.isNotEmpty) {
+           if (_weldFinding == null) {
+              _showError('Please select a finding for Weld Visual section');
+              return;
+           }
+           if (_weldCondition == null) {
+              _showError('Please select a condition for Weld Visual section');
+              return;
+           }
+           if (_weldSectionRecommendation == null) {
+              _showError('Please select a recommendation for Weld Visual section');
+              return;
+           }
       }
-      if (_weldCondition == null) {
-        missingItems.add('Weld Visual: Condition is required');
-      }
-      if (_weldSectionRecommendation == null) {
-        missingItems.add('Weld Visual: Section Recommendation is required');
-      }
-      if (_weldPhotos.isEmpty) {
-        missingItems.add('Weld Visual: At least 1 photo required');
-      }
-    }
 
+      // 4. Validate EXTERNAL VISUAL (New Logic)
+      // Iterate through sections to ensure required fields are filled if section exists
+      if (_externalSections.isNotEmpty) {
+         for (int i = 0; i < _externalSections.length; i++) {
+            var section = _externalSections[i];
+            
+            if (section.photos.isEmpty) {
+               _showError('Please add at least 1 photo for External Section ${section.sectionNumber}');
+               return;
+            }
+
+            if (section.componentName == null) {
+               _showError('Please select a component for External Section ${section.sectionNumber}');
+               return;
+            }
+            if (section.defectType == null) {
+               _showError('Please select a defect type for External Section ${section.sectionNumber}');
+               return;
+            }
+            if (section.condition == null) {
+               _showError('Please select a condition for External Section ${section.sectionNumber}');
+               return;
+            }
+            if (section.recommendation == null) {
+               _showError('Please select a recommendation for External Section ${section.sectionNumber}');
+               return;
+            }
+         }
+      }
     // Internal Visual - only if required by manager AND accessible
     if (_requireInternal && _internalAccessible) {
       if (_internalFinding == null) {
@@ -352,24 +533,158 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     setState(() => _isSubmitting = true);
 
     try {
+      // Flatten Findings to mimic legacy structure: "1.1 Finding text\n1.2 Finding text"
+      // Map one finding/recommendation to one photo if possible, or just list them.
+      // Logic: For each section, list findings prefixed with X.Y
+      // The user wants: "can we specify '1.1 finding' is for '1.1 image'?"
+      // Ideally, the checkbox selection implies it applies to the photos in that section.
+      
+      List<String> flatFindings = [];
+      List<String> flatRecommendations = [];
+
+      for (var section in _equipmentSections) {
+        for (int i = 0; i < section.photos.length; i++) {
+           // If there are findings selected, assign them to photos cyclically or just list all
+           // But the prompt implies standard checkboxes.
+           // Let's formatting: "1.x <Finding Text>"
+           // If the user selected multiple findings, we assume they apply to the set of photos.
+           // However, let's just dump the selected checkboxes as text lines.
+        }
+        // Actually, better approach for report readability:
+        // "Section 1 Findings: \n - Finding 1 \n - Finding 2"
+        // But user wants "1.1 finding".
+        // Let's format as: 
+        // "1.1: [First Selected Finding]" 
+        // "1.2: [Second Selected Finding]" (if 2nd photo exists)
+        // If simply checkboxes, maybe we just list them all under the section.
+        
+        if (section.selectedFindings.isNotEmpty) {
+           for (var f in section.selectedFindings) {
+             flatFindings.add('${section.sectionNumber}.x $f'); 
+           }
+        }
+        if (section.selectedRecommendations.isNotEmpty) {
+           for (var r in section.selectedRecommendations) {
+             flatRecommendations.add('${section.sectionNumber}.x $r');
+           }
+        }
+      }
+      
+      // REVISED LOGIC based on "1.1 finding is for 1.1 image" request:
+      // We will map the *first* selected finding to *first* photo, etc.
+      
+      List<String> refinedFindings = [];
+      List<String> refinedRecommendations = [];
+      
+      for (var section in _equipmentSections) {
+        int photoCount = section.photos.length;
+        int findingCount = section.selectedFindings.length;
+        int recCount = section.selectedRecommendations.length;
+        
+        for (int i = 0; i < photoCount; i++) {
+          String label = '${section.sectionNumber}.${i + 1}';
+          
+          // Finding
+          String findingText = 'Nil';
+          if (i < findingCount) {
+            findingText = section.selectedFindings[i];
+          } else if (findingCount > 0) {
+             // If more photos than findings, repeat last or leave empty?
+             // Let's just use "See above" or if findingCount == 1, apply to all.
+             // If findingCount == 1, apply to all photos
+             if (findingCount == 1) findingText = section.selectedFindings[0];
+          }
+          refinedFindings.add('$label $findingText');
+          
+          // Recommendation
+          String recText = 'Nil';
+          if (i < recCount) {
+             recText = section.selectedRecommendations[i];
+          } else if (recCount > 0) {
+             if (recCount == 1) recText = section.selectedRecommendations[0];
+          }
+          refinedRecommendations.add('$label $recText');
+        }
+      }
+
+      String finalEquipmentFinding = refinedFindings.join('\n');
+      String finalEquipmentRecommendation = refinedRecommendations.join('\n');
+
+      // Prepare structured data for PDF generator (to support multi-photo rows per section)
+      List<Map<String, dynamic>> equipmentSectionsData = [];
+
+      // 1. Process EQUIPMENT Sections
+      for (var section in _equipmentSections) {
+         List<String> sectionFindings = [];
+         List<String> sectionRecommendations = [];
+         
+         int photoCount = section.photos.length;
+         int findingCount = section.selectedFindings.length;
+         int recCount = section.selectedRecommendations.length;
+
+         for (int i = 0; i < photoCount; i++) {
+            String label = '${section.sectionNumber}.${i + 1}';
+            
+            String fText = 'Nil';
+            if (i < findingCount) fText = section.selectedFindings[i];
+            else if (findingCount == 1) fText = section.selectedFindings[0];
+            sectionFindings.add('$label $fText');
+
+            String rText = 'Nil';
+            if (i < recCount) rText = section.selectedRecommendations[i];
+            else if (recCount == 1) rText = section.selectedRecommendations[0];
+            sectionRecommendations.add('$label $rText');
+         }
+
+         equipmentSectionsData.add({
+           'section_number': section.sectionNumber,
+           'photos': section.photos, // List<XFile>
+           'findings': sectionFindings,
+           'recommendations': sectionRecommendations,
+         });
+      }
+
+      // 2. Process EXTERNAL Sections (Appended to same list for PDF flow)
+      for (var section in _externalSections) {
+        List<String> sectionFindings = [];
+        List<String> sectionRecommendations = [];
+        int photoCount = section.photos.length;
+
+        // Generate the automated finding text
+        String autoFinding = _generateExternalFindingText(section);
+        String autoRec = section.recommendation ?? 'Nil';
+
+        for (int i = 0; i < photoCount; i++) {
+           String label = '${section.sectionNumber}.${i + 1}';
+           // For external, the single generated sentence applies to the whole section (all photos)
+           sectionFindings.add('$label $autoFinding');
+           sectionRecommendations.add('$label $autoRec');
+        }
+        
+        equipmentSectionsData.add({
+           'section_number': section.sectionNumber,
+           'photos': section.photos,
+           'findings': sectionFindings,
+           'recommendations': sectionRecommendations,
+        });
+      }
+
       // Collect all form data
       final reportData = {
         'inspection_date': DateFormat('yyyy-MM-dd').format(_inspectionDate),
-        'equipment_finding': _equipmentFinding.isEmpty
+        'equipment_finding': finalEquipmentFinding.isEmpty
             ? 'Nil'
-            : _equipmentFinding,
-        'equipment_recommendation': _equipmentRecommendation.isEmpty
+            : finalEquipmentFinding,
+        'equipment_recommendation': finalEquipmentRecommendation.isEmpty
             ? 'Nil'
-            : _equipmentRecommendation,
+            : finalEquipmentRecommendation,
+        'equipment_sections_data': equipmentSectionsData, // Contains BOTH Equipment and External
 
-        // External Visual with NEW fields
-        'external_finding': _externalFinding ?? 'Nil',
-        'external_condition': _externalCondition ?? 'Satisfactory',
-        'external_section_recommendation':
-            _externalSectionRecommendation ?? 'Nil',
-        'external_recommendation': _externalRecommendation.isEmpty
-            ? 'Nil'
-            : _externalRecommendation,
+        // Legacy/Graph Support Fields (Still populated for backend parsing/analytics)
+        'external_finding': _externalSections.isNotEmpty ? _externalSections.first.defectType ?? 'Nil' : 'Nil',
+        'external_condition': _externalSections.isNotEmpty ? _externalSections.first.condition ?? 'Satisfactory' : 'Satisfactory',
+        'external_section_recommendation': _externalSections.isNotEmpty ? _externalSections.first.recommendation ?? 'Nil' : 'Nil',
+        'external_recommendation': 'See sections above',
 
         // Weld Visual with NEW fields
         'weld_finding': _weldFinding ?? 'Nil',
@@ -410,56 +725,68 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
             ? 'Continue routine schedule'
             : _generalRecommendation,
         'photos': [
-          ..._equipmentPhotos,
-          ..._externalPhotos,
+          ...allEquipmentPhotos,
+          ..._externalSections.expand((s) => s.photos).toList(),
           ..._weldPhotos,
           ..._internalPhotos,
         ],
         'photo_sections': {
-          'equipment': _equipmentPhotos.length,
-          'external': _externalPhotos.length,
+          'equipment': allEquipmentPhotos.length,
+          'external': _externalSections.expand((s) => s.photos).length,
           'weld': _weldPhotos.length,
           'internal': _internalPhotos.length,
         },
       };
 
-      // Generate PDF preview
-      final pdfBytes = await PdfGenerator.generateVisualInspectionReport(
-        inspection: widget.inspection,
-        reportData: reportData,
-        requireExternal: _requireExternal,
-        requireWeld: _requireWeld,
-        requireInternal: _requireInternal,
-        requireThickness: _requireThickness,
-      );
+      // TODO: Send reportData to backend or generate PDF
+      // For now, let's just generate the PDF directly
+      setState(() => _isSubmitting = true);
+      
+      try {
+        final pdfBytes = await PdfGenerator.generateVisualInspectionReport(
+          inspection: widget.inspection,
+          reportData: reportData,
+          requireExternal: _requireExternal,
+          requireWeld: _requireWeld,
+          requireInternal: _requireInternal,
+          requireThickness: _requireThickness,
+        );
+        
+        setState(() => _isSubmitting = false);
 
-      if (!mounted) return;
-
-      // Navigate to PDF Preview Page
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PdfPreviewPage(
-            pdfBytes: pdfBytes,
-            reportData: reportData,
-            inspectionId: widget.inspection['id'],
-            onEdit: () {
-              Navigator.pop(context); // Go back to edit
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error generating PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PdfPreviewPage(
+                pdfBytes: pdfBytes,
+                reportData: reportData,
+                inspectionId: widget.inspection['id'],
+                onEdit: () {
+                  Navigator.pop(context); // Go back to edit
+                },
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() => _isSubmitting = false);
+        _showError('Error generating PDF: $e');
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -921,7 +1248,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
 
           // Inspection Type *
           Text(
-            'Inspection Type *',
+            'Inspection Title:',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -937,7 +1264,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              widget.inspection['title'] ?? 'Visual Inspection',
+              widget.inspection['title'] ?? 'N/A',
               style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -948,36 +1275,64 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           const SizedBox(height: 20),
 
           // Equipment Tag
-          Text(
-            'Equipment Tag',
+        Text(
+          'Equipment Tag:',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundGrey,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            widget.inspection['equipment_id'] ?? 'N/A', // Fixed key
             style: GoogleFonts.inter(
               fontSize: 14,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
               color: AppTheme.textPrimary,
             ),
           ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppTheme.backgroundGrey,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              widget.inspection['equipment_tag'] ?? 'N/A',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
+        ),
+        const SizedBox(height: 20),
 
-          // Location
-          Text(
-            'Location',
+        // Equipment Type
+        Text(
+          'Equipment Type:',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundGrey,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            widget.inspection['equipment_type'] ?? 'N/A',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Location
+        Text(
+          'Location:',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -993,7 +1348,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              widget.inspection['location'] ?? 'Process Area',
+              widget.inspection['location'] ?? 'N/A',
               style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -1005,7 +1360,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
 
           // Inspection Date
           Text(
-            'Inspection Date',
+            'Inspection Date:',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1234,24 +1589,172 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPhotoUploadSection(
-          'equipment',
-          _equipmentPhotos,
-          'Nameplate, Tag, & General Photos *',
-        ),
-        const SizedBox(height: 20),
-        _buildFindingRecommendation(
-          'Finding',
-          _equipmentFinding,
-          (v) => _equipmentFinding = v,
-          'e.g., Nameplate legible, tag number verified',
-        ),
+        ..._equipmentSections.asMap().entries.map((entry) {
+          final index = entry.key;
+          final section = entry.value;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Section ${section.sectionNumber}',
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    if (_equipmentSections.length > 1)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: AppTheme.primaryRed, size: 20),
+                        onPressed: () => _removeEquipmentSection(index),
+                        tooltip: 'Remove Section',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildPhotoUploadSection(
+                  'equipment',
+                  section.photos,
+                  'Photos (Max 3)',
+                  sectionIndex: index,
+                  sectionNumber: section.sectionNumber,
+                  maxPhotos: 3,
+                ),
+                const SizedBox(height: 20),
+
+                // WARNING if no photos
+                if (section.photos.isEmpty)
+                   Padding(
+                     padding: const EdgeInsets.symmetric(vertical: 8.0),
+                     child: Row(
+                       children: [
+                         const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                         const SizedBox(width: 8),
+                         Text(
+                           'Please add a photo to enable details.',
+                           style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                         ),
+                       ],
+                     ),
+                   ),
+
+                Opacity(
+                  opacity: section.photos.isEmpty ? 0.5 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: section.photos.isEmpty,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Finding',
+                          style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade200)),
+                          child: Column(
+                            children: _equipmentFindingOptions.map((option) {
+                              return CheckboxListTile(
+                                title: Text(option,
+                                    style: GoogleFonts.inter(fontSize: 13)),
+                                value: section.selectedFindings.contains(option),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                activeColor: AppTheme.primaryRed,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      section.selectedFindings.add(option);
+                                    } else {
+                                      section.selectedFindings.remove(option);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Recommendation',
+                          style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200)),
+                  child: Column(
+                    children: _equipmentRecommendationOptions.map((option) {
+                      return CheckboxListTile(
+                        title: Text(option,
+                            style: GoogleFonts.inter(fontSize: 13)),
+                        value: section.selectedRecommendations.contains(option),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: AppTheme.primaryRed,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              section.selectedRecommendations.add(option);
+                            } else {
+                              section.selectedRecommendations.remove(option);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+                      ], 
+                    ), 
+                  ), 
+                ),
+              ],
+            ),
+          );
+        }).toList(),
         const SizedBox(height: 16),
-        _buildFindingRecommendation(
-          'Recommendation',
-          _equipmentRecommendation,
-          (v) => _equipmentRecommendation = v,
-          'e.g., Nil or repaint tag number',
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: _addEquipmentSection,
+            icon: const Icon(Icons.add_circle_outline, size: 18),
+            label: const Text('Add Section'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
         ),
       ],
     );
@@ -1266,46 +1769,151 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 12),
-        _buildPhotoUploadSection(
-          'external',
-          _externalPhotos,
-          'External Component Photos',
-        ),
-        const SizedBox(height: 20),
-        _buildDropdownField(
-          label: 'Finding (Defect Type) *',
-          value: _externalFinding,
-          items: _defectOptions,
-          onChanged: (v) => setState(() => _externalFinding = v),
-          hint: 'Select defect type',
-        ),
-        const SizedBox(height: 16),
+        
+        ..._externalSections.asMap().entries.map((entry) {
+          final index = entry.key;
+          final section = entry.value;
+          
+          return Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Section ${section.sectionNumber}',
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppTheme.primaryRed, size: 20),
+                      onPressed: () => _removeExternalSection(index),
+                      tooltip: 'Remove Section',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // PHOTOS
+                _buildPhotoUploadSection(
+                  'external',
+                  section.photos,
+                  'External Photos (Max 3)',
+                  sectionIndex: index,
+                  sectionNumber: section.sectionNumber,
+                  maxPhotos: 3,
+                ),
+                const SizedBox(height: 20),
 
-        // NEW: Condition Dropdown
-        _buildDropdownField(
-          label: 'Condition *',
-          value: _externalCondition,
-          items: _conditionOptions,
-          onChanged: (v) => setState(() => _externalCondition = v),
-          hint: 'Select condition',
-        ),
-        const SizedBox(height: 16),
+                // WARNING if no photos
+                if (section.photos.isEmpty)
+                   Padding(
+                     padding: const EdgeInsets.symmetric(vertical: 8.0),
+                     child: Row(
+                       children: [
+                         const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                         const SizedBox(width: 8),
+                         Text(
+                           'Please add a photo to enable details.',
+                           style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                         ),
+                       ],
+                     ),
+                   ),
 
-        // NEW: Section Recommendation Dropdown
-        _buildDropdownField(
-          label: 'Section Recommendation *',
-          value: _externalSectionRecommendation,
-          items: _sectionRecommendationOptions,
-          onChanged: (v) => setState(() => _externalSectionRecommendation = v),
-          hint: 'Select recommendation',
-        ),
-        const SizedBox(height: 16),
+                // Fields are disabled until photos are added
+                Opacity(
+                  opacity: section.photos.isEmpty ? 0.5 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: section.photos.isEmpty,
+                    child: Column(
+                      children: [
+                        // COMPONENT DROPDOWN
+                        _buildDropdownField(
+                          label: 'Component *',
+                          value: section.componentName,
+                          items: _externalComponents,
+                          onChanged: (v) => setState(() => section.componentName = v),
+                          hint: 'Select component',
+                        ),
+                        const SizedBox(height: 16),
+                
+                        // FINDING DROPDOWN
+                        _buildDropdownField(
+                          label: 'Finding (Defect Type) *',
+                          value: section.defectType,
+                          items: _defectOptions,
+                          onChanged: (v) {
+                             setState(() {
+                               section.defectType = v;
+                               // Automatic logic:
+                               if (v == 'Nil') {
+                                 section.condition = 'Satisfactory';
+                                 section.recommendation = 'Nil';
+                               } else {
+                                 section.condition = 'Observation';
+                                 section.recommendation = 'Monitor';
+                               }
+                             });
+                          },
+                          hint: 'Select defect type',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
 
-        _buildFindingRecommendation(
-          'Additional Notes',
-          _externalRecommendation,
-          (v) => _externalRecommendation = v,
-          'Any additional notes or detailed recommendations',
+                // CONDITION DROPDOWN
+                _buildDropdownField(
+                  label: 'Condition *',
+                  value: section.condition,
+                  items: _conditionOptions,
+                  onChanged: (v) => setState(() => section.condition = v),
+                  hint: 'Select condition',
+                ),
+                const SizedBox(height: 16),
+
+                // RECOMMENDATION DROPDOWN
+                _buildDropdownField(
+                  label: 'Section Recommendation *',
+                  value: section.recommendation,
+                  items: _sectionRecommendationOptions,
+                  onChanged: (v) => setState(() => section.recommendation = v),
+                  hint: 'Select recommendation',
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+        
+        const SizedBox(height: 16),
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: _addExternalSection,
+            icon: const Icon(Icons.add_circle_outline, size: 18),
+            label: const Text('Add Section'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
         ),
       ],
     );
@@ -1323,41 +1931,66 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
         _buildPhotoUploadSection('weld', _weldPhotos, 'Weld Joint Photos'),
         const SizedBox(height: 20),
 
-        _buildDropdownField(
-          label: 'Finding (Defect Type) *',
-          value: _weldFinding,
-          items: _defectOptions,
-          onChanged: (v) => setState(() => _weldFinding = v),
-          hint: 'Select defect type',
-        ),
+        if (_weldPhotos.isEmpty)
+           Padding(
+             padding: const EdgeInsets.symmetric(vertical: 8.0),
+             child: Row(
+               children: [
+                 const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                 const SizedBox(width: 8),
+                 Text(
+                   'Please add a photo to enable details.',
+                   style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                 ),
+               ],
+             ),
+           ),
 
-        const SizedBox(height: 16),
+        Opacity(
+          opacity: _weldPhotos.isEmpty ? 0.5 : 1.0,
+          child: IgnorePointer(
+            ignoring: _weldPhotos.isEmpty,
+            child: Column(
+              children: [
+                _buildDropdownField(
+                  label: 'Finding (Defect Type) *',
+                  value: _weldFinding,
+                  items: _defectOptions,
+                  onChanged: (v) => setState(() => _weldFinding = v),
+                  hint: 'Select defect type',
+                ),
 
-        // NEW: Condition Dropdown
-        _buildDropdownField(
-          label: 'Condition *',
-          value: _weldCondition,
-          items: _conditionOptions,
-          onChanged: (v) => setState(() => _weldCondition = v),
-          hint: 'Select condition',
-        ),
-        const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-        // NEW: Section Recommendation Dropdown
-        _buildDropdownField(
-          label: 'Section Recommendation *',
-          value: _weldSectionRecommendation,
-          items: _sectionRecommendationOptions,
-          onChanged: (v) => setState(() => _weldSectionRecommendation = v),
-          hint: 'Select recommendation',
-        ),
-        const SizedBox(height: 16),
+                // NEW: Condition Dropdown
+                _buildDropdownField(
+                  label: 'Condition *',
+                  value: _weldCondition,
+                  items: _conditionOptions,
+                  onChanged: (v) => setState(() => _weldCondition = v),
+                  hint: 'Select condition',
+                ),
+                const SizedBox(height: 16),
 
-        _buildFindingRecommendation(
-          'Additional Notes',
-          _weldRecommendation,
-          (v) => _weldRecommendation = v,
-          'Any additional notes or detailed recommendations',
+                // NEW: Section Recommendation Dropdown
+                _buildDropdownField(
+                  label: 'Section Recommendation *',
+                  value: _weldSectionRecommendation,
+                  items: _sectionRecommendationOptions,
+                  onChanged: (v) => setState(() => _weldSectionRecommendation = v),
+                  hint: 'Select recommendation',
+                ),
+                const SizedBox(height: 16),
+
+                _buildFindingRecommendation(
+                  'Additional Notes',
+                  _weldRecommendation,
+                  (v) => _weldRecommendation = v,
+                  'Any additional notes or detailed recommendations',
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -1384,43 +2017,68 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
             'Internal Component Photos',
           ),
           const SizedBox(height: 20),
+
+        if (_internalPhotos.isEmpty)
+           Padding(
+             padding: const EdgeInsets.symmetric(vertical: 8.0),
+             child: Row(
+               children: [
+                 const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                 const SizedBox(width: 8),
+                 Text(
+                   'Please add a photo to enable details.',
+                   style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                 ),
+               ],
+             ),
+           ),
+
+          Opacity(
+            opacity: _internalPhotos.isEmpty ? 0.5 : 1.0,
+            child: IgnorePointer(
+              ignoring: _internalPhotos.isEmpty,
+              child: Column(
+                children: [
+                    _buildDropdownField(
+                      label: 'Finding (Defect Type) *',
+                      value: _internalFinding,
+                      items: _defectOptions,
+                      onChanged: (v) => setState(() => _internalFinding = v),
+                      hint: 'Select defect type',
+                    ),
           
-          _buildDropdownField(
-            label: 'Finding (Defect Type) *',
-            value: _internalFinding,
-            items: _defectOptions,
-            onChanged: (v) => setState(() => _internalFinding = v),
-            hint: 'Select defect type',
-          ),
-
-          const SizedBox(height: 16),
-
-          // NEW: Condition Dropdown
-          _buildDropdownField(
-            label: 'Condition *',
-            value: _internalCondition,
-            items: _conditionOptions,
-            onChanged: (v) => setState(() => _internalCondition = v),
-            hint: 'Select condition',
-          ),
-          const SizedBox(height: 16),
-
-          // NEW: Section Recommendation Dropdown
-          _buildDropdownField(
-            label: 'Section Recommendation *',
-            value: _internalSectionRecommendation,
-            items: _sectionRecommendationOptions,
-            onChanged: (v) =>
-                setState(() => _internalSectionRecommendation = v),
-            hint: 'Select recommendation',
-          ),
-          const SizedBox(height: 16),
-
-          _buildFindingRecommendation(
-            'Additional Notes',
-            _internalRecommendation,
-            (v) => _internalRecommendation = v,
-            'Any additional notes or detailed recommendations',
+                    const SizedBox(height: 16),
+          
+                    // NEW: Condition Dropdown
+                    _buildDropdownField(
+                      label: 'Condition *',
+                      value: _internalCondition,
+                      items: _conditionOptions,
+                      onChanged: (v) => setState(() => _internalCondition = v),
+                      hint: 'Select condition',
+                    ),
+                    const SizedBox(height: 16),
+          
+                    // NEW: Section Recommendation Dropdown
+                    _buildDropdownField(
+                      label: 'Section Recommendation *',
+                      value: _internalSectionRecommendation,
+                      items: _sectionRecommendationOptions,
+                      onChanged: (v) =>
+                          setState(() => _internalSectionRecommendation = v),
+                      hint: 'Select recommendation',
+                    ),
+                    const SizedBox(height: 16),
+          
+                    _buildFindingRecommendation(
+                      'Additional Notes',
+                      _internalRecommendation,
+                      (v) => _internalRecommendation = v,
+                      'Any additional notes or detailed recommendations',
+                    ),
+                ],
+              ),
+            ),
           ),
         ] else
           Text(
@@ -1440,8 +2098,38 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 16),
-        ..._thicknessData.asMap().entries.map((entry) {
-          return Container(
+        
+        // NEW: Thickness Photos
+        _buildPhotoUploadSection(
+            'thickness', 
+            _thicknessPhotos, 
+            'Thickness Measurement Photos'
+        ),
+        const SizedBox(height: 20),
+
+        if (_thicknessPhotos.isEmpty)
+           Padding(
+             padding: const EdgeInsets.symmetric(vertical: 8.0),
+             child: Row(
+               children: [
+                 const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                 const SizedBox(width: 8),
+                 Text(
+                   'Please add a photo to enable details.',
+                   style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                 ),
+               ],
+             ),
+           ),
+
+        Opacity(
+            opacity: _thicknessPhotos.isEmpty ? 0.5 : 1.0,
+            child: IgnorePointer(
+              ignoring: _thicknessPhotos.isEmpty,
+              child: Column(
+                children: [
+                    ..._thicknessData.asMap().entries.map((entry) {
+                      return Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1528,6 +2216,10 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           onChanged: (v) => setState(() => _thicknessSectionRecommendation = v),
           hint: 'Select recommendation',
         ),
+                ],
+              ),
+            ),
+        ),
       ],
     );
   }
@@ -1603,8 +2295,11 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
   Widget _buildPhotoUploadSection(
     String section,
     List<XFile> photos,
-    String label,
-  ) {
+    String label, {
+    int? sectionIndex,
+    int? sectionNumber, // ADDED: Passing explicit number avoids incorrect list lookup
+    int maxPhotos = 100,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1613,17 +2308,24 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () => _pickPhotos(section),
-          icon: const Icon(Icons.add_photo_alternate),
-          label: Text('Add Photos (${photos.length})'),
-        ),
+        if (photos.length < maxPhotos)
+          OutlinedButton.icon(
+            onPressed: () => _pickPhotos(section, sectionIndex: sectionIndex),
+            icon: const Icon(Icons.add_photo_alternate),
+            label: Text('Add Photos (${photos.length}/$maxPhotos)'),
+          ),
         if (photos.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: photos.asMap().entries.map((e) {
+              final photoIndex = e.key + 1;
+              // use sectionNumber if provided, otherwise standard label
+              final String photoLabel = sectionNumber != null
+                  ? '$sectionNumber.$photoIndex'
+                  : 'Photo $photoIndex';
+
               return Stack(
                 children: [
                   Container(
@@ -1656,10 +2358,31 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
                     ),
                   ),
                   Positioned(
+                    top: 0,
+                    left: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(8),
+                            bottomRight: Radius.circular(8)),
+                      ),
+                      child: Text(
+                        photoLabel,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  Positioned(
                     top: -8,
                     right: -8,
                     child: IconButton(
-                      onPressed: () => _removePhoto(section, e.key),
+                      onPressed: () =>
+                          _removePhoto(section, e.key, sectionIndex: sectionIndex),
                       icon: const Icon(
                         Icons.cancel,
                         color: Colors.red,
@@ -1835,4 +2558,38 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
       ),
     );
   }
+}
+
+class InspectionSectionData {
+  int sectionNumber;
+  List<XFile> photos;
+  List<String> selectedFindings;
+  List<String> selectedRecommendations;
+
+  InspectionSectionData({
+    required this.sectionNumber,
+    List<XFile>? photos,
+    List<String>? selectedFindings,
+    List<String>? selectedRecommendations,
+  })  : photos = photos ?? [],
+        selectedFindings = selectedFindings ?? [],
+        selectedRecommendations = selectedRecommendations ?? [];
+}
+
+class ExternalSectionData {
+  int sectionNumber;
+  List<XFile> photos;
+  String? componentName;
+  String? defectType; 
+  String? condition;
+  String? recommendation; 
+
+  ExternalSectionData({
+    required this.sectionNumber,
+    List<XFile>? photos,
+    this.componentName,
+    this.defectType,
+    this.condition,
+    this.recommendation,
+  }) : photos = photos ?? [];
 }

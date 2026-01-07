@@ -143,19 +143,26 @@ def get_inspection_history(
         "inspections": result
     }
 
-def get_start_date_from_period(period: str) -> date | None:
-    """Calculate the start date based on the period string."""
+def get_date_range_from_period(period: str) -> tuple[date | None, date | None]:
+    """Calculate the start and end date based on the period string."""
     today = date.today()
 
     if period in ("day", "today"):
-        return today
+        return today, today
     elif period == "week":
-        return today - timedelta(days=today.weekday())
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+        return start, end
     elif period == "month":
-        return today.replace(day=1)
+        start = today.replace(day=1)
+        next_month = start.replace(day=28) + timedelta(days=4)
+        end = next_month - timedelta(days=next_month.day)
+        return start, end
     elif period == "year":
-        return today.replace(month=1, day=1)
-    return None # "all"
+        start = today.replace(month=1, day=1)
+        end = today.replace(month=12, day=31)
+        return start, end
+    return None, None # "all"
 
 @router.get("/stats")
 def get_dashboard_stats(
@@ -165,38 +172,50 @@ def get_dashboard_stats(
 ):
     """Get dashboard statistics based on a time period."""
 
-    start_date = get_start_date_from_period(period)
+    start_date, end_date = get_date_range_from_period(period)
 
     # Base query for inspections, filtered by role
     query = db.query(models.Inspection)
     if current_user.role == models.RoleEnum.inspector:
         query = query.filter(models.Inspection.inspector_id == current_user.id)
 
-    # 1. Total Inspections (Created in period)
-    total_query = query
-    if start_date:
-        total_query = total_query.filter(models.Inspection.created_at >= start_date)
-    total_inspections = total_query.count()
+    def apply_period_filter(q, date_column, is_timestamp=False):
+        if start_date:
+            q = q.filter(date_column >= start_date)
+        if end_date:
+            if is_timestamp:
+                # For TIMESTAMP, filter < next_day to include the full end_date
+                next_day = end_date + timedelta(days=1)
+                q = q.filter(date_column < next_day)
+            else:
+                # For Date, <= end_date is inclusive
+                q = q.filter(date_column <= end_date)
+        return q
+
+    # 1. Scheduled (Scheduled in period)
+    scheduled_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.scheduled)
+    scheduled_query = apply_period_filter(scheduled_query, models.Inspection.scheduled_date, is_timestamp=False)
+    scheduled = scheduled_query.count()
 
     # 2. Completed (Completed in period)
     completed_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.completed)
-    if start_date:
-        completed_query = completed_query.filter(models.Inspection.completion_date >= start_date)
+    completed_query = apply_period_filter(completed_query, models.Inspection.completion_date, is_timestamp=False)
     completed = completed_query.count()
 
-    # 3. Scheduled (Scheduled in period)
-    scheduled_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.scheduled)
-    if start_date:
-        scheduled_query = scheduled_query.filter(models.Inspection.scheduled_date >= start_date)
-    scheduled = scheduled_query.count()
-
-    # 4. Pending Review (Created in period)
+    # 3. Pending Review (Submitted in period - use completion_date)
     pending_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.pending_review)
-    if start_date:
-        pending_query = pending_query.filter(models.Inspection.created_at >= start_date)
+    pending_query = apply_period_filter(pending_query, models.Inspection.completion_date, is_timestamp=False)
     pending_review = pending_query.count()
 
-    # 5. Reports Generated (Same as completed)
+    # 4. Rejected (Rejected in period - use updated_at as proxy for decision time)
+    rejected_query = query.filter(models.Inspection.status == models.InspectionStatusEnum.rejected)
+    rejected_query = apply_period_filter(rejected_query, models.Inspection.updated_at, is_timestamp=True)
+    rejected = rejected_query.count()
+
+    # 5. Total Inspections (Sum of all active statuses in period)
+    total_inspections = scheduled + completed + pending_review + rejected
+
+    # 6. Reports Generated (Same as completed)
     reports_generated = completed
 
     return {
@@ -205,6 +224,7 @@ def get_dashboard_stats(
         "pending_review": pending_review,
         "completed": completed,
         "scheduled": scheduled,
+        "rejected": rejected,
         "filter_period": period,
     }
 
@@ -763,21 +783,21 @@ def get_defect_analytics(
     period: str = "all",
     db: Session = Depends(get_db),
 ):
-    start_date = get_start_date_from_period(period)
+    start_date, end_date = get_date_range_from_period(period)
 
     sql = """
     SELECT equipment_type, defect_type, COUNT(*) as count
     FROM (
-        SELECT equipment_type, external_finding AS defect_type, created_at, status
+        SELECT equipment_type, external_finding AS defect_type, completion_date, status
         FROM inspections
         UNION ALL
-        SELECT equipment_type, weld_finding AS defect_type, created_at, status
+        SELECT equipment_type, weld_finding AS defect_type, completion_date, status
         FROM inspections
         UNION ALL
-        SELECT equipment_type, internal_finding AS defect_type, created_at, status
+        SELECT equipment_type, internal_finding AS defect_type, completion_date, status
         FROM inspections
         UNION ALL
-        SELECT equipment_type, thickness_finding AS defect_type, created_at, status
+        SELECT equipment_type, thickness_finding AS defect_type, completion_date, status
         FROM inspections
     )
     WHERE status = 'completed'
@@ -787,9 +807,13 @@ def get_defect_analytics(
 
     params = {}
     if start_date:
-        sql += " AND created_at >= :start_date"
+        sql += " AND completion_date >= :start_date"
         params["start_date"] = start_date
-
+    if end_date:
+        # completion_date is a DATE field, so use <= for inclusive range
+        sql += " AND completion_date <= :end_date"
+        params["end_date"] = end_date
+    
     sql += " GROUP BY equipment_type, defect_type"
 
     result = db.execute(text(sql), params).fetchall()

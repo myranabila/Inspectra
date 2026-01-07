@@ -144,6 +144,16 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       }
     }
 
+    if (_scheduledDate == null) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a scheduled date (When)'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
     });
@@ -222,7 +232,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       backgroundColor: const Color(0xFFF3F4F6),
       body: Row(
         children: [
-          CollapsibleSidebar(currentPage: 'assign'),
+          CollapsibleSidebar(currentPage: 'assign_task'),
           Expanded(
             child: Column(
               children: [
@@ -757,6 +767,8 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                                                                       filled: true,
                                                                       fillColor: Colors.white,
                                                                     ),
+                                                                    validator: (value) => 
+                                                                        (value?.trim().isEmpty ?? true) ? 'Required' : null,
                                                                   ),
                                                                 ],
                                                               ),

@@ -317,88 +317,21 @@ class DashboardService {
     }
   }
 
-  // Get strict dashboard metrics with role-based scoping and filtering
+  // Get strict dashboard metrics using the backend stats endpoint
   static Future<Map<String, dynamic>> getDashboardMetrics({
     String period = 'all',
   }) async {
     try {
-      List<dynamic> inspections = [];
-
-      // 1. Determine Scope based on Role
-      final role = await AuthService.getUserRole();
-      if (role?.toLowerCase() == 'manager') {
-        inspections = await getAllInspections();
-      } else {
-        inspections = await getMyTasks();
-      }
-
-      final now = DateTime.now();
-      DateTime? startDate;
-
-      if (period == 'year') {
-        startDate = DateTime(now.year, 1, 1);
-      } else if (period == 'month') {
-        startDate = DateTime(now.year, now.month, 1);
-      } else if (period == 'week') {
-        // Assuming Monday start. weekday 1=Mon.
-        startDate = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ).subtract(Duration(days: now.weekday - 1));
-      } else if (period == 'today') {
-        startDate = DateTime(now.year, now.month, now.day);
-      }
-
-      int total = 0;
-      int scheduled = 0;
-      int pendingReview = 0;
-      int completed = 0;
-      int rejected = 0;
-      int overdue = 0;
-
-      for (var inspection in inspections) {
-        // Filter by Date
-        final dateStr =
-            inspection['scheduled_date'] ?? inspection['created_at'];
-        if (startDate != null && dateStr != null) {
-          final date = DateTime.tryParse(dateStr);
-          if (date == null || date.isBefore(startDate)) continue;
-        }
-
-        total++;
-
-        final rawStatus = inspection['status']?.toString().toLowerCase() ?? '';
-        final status = rawStatus.trim();
-
-        if (status == 'scheduled') {
-          scheduled++;
-        } else if (status == 'pending review' ||
-            status == 'pending_review' ||
-            status == 'pending-review') {
-          pendingReview++;
-        } else if (status == 'completed') {
-          completed++;
-        } else if (status == 'rejected') {
-          rejected++;
-        }
-
-        if (status != 'completed' && dateStr != null) {
-          final dueDate = DateTime.tryParse(dateStr);
-          if (dueDate != null &&
-              dueDate.isBefore(DateTime(now.year, now.month, now.day))) {
-            overdue++;
-          }
-        }
-      }
-
+      // Use the verified backend endpoint for stats
+      final stats = await getStats(period: period, forceRefresh: true);
+      
       return {
-        'total': total,
-        'scheduled': scheduled,
-        'pending_review': pendingReview,
-        'completed': completed,
-        'rejected': rejected,
-        'overdue': overdue,
+        'total': stats['total_inspections'] ?? 0,
+        'scheduled': stats['scheduled'] ?? 0,
+        'pending_review': stats['pending_review'] ?? 0,
+        'completed': stats['completed'] ?? 0,
+        'rejected': stats['rejected'] ?? 0,
+        'overdue': 0, // Overdue not currently provided by stats endpoint
       };
     } catch (e) {
       print('[ERROR] getDashboardMetrics failed: $e');
