@@ -18,18 +18,23 @@ class PdfGenerator {
     required bool requireThickness,
   }) async {
     final pdf = pw.Document();
+
+    // Local sanitize shortcut
+    String sanitize(String? text) => PdfGenerator.sanitizeText(text);
+
     
     // Extract data
-    final inspectionId = inspection['inspection_id_display'] ?? inspection['equipment_id'] ?? 'N/A';
-    final reportNumber = inspection['report_number'] ?? 'N/A';
-    final equipmentTag = inspection['equipment_id'] ?? 'R-001';
-    final equipmentType = inspection['equipment_type'] ?? 'Reactor';
-    final equipmentDescription = inspection['title'] ?? equipmentType;
-    final area = inspection['area'] ?? inspection['location'] ?? 'Plant 1';
+    final inspectionId = sanitize(inspection['inspection_id_display'] ?? inspection['equipment_id'] ?? 'N/A');
+    final reportNumber = sanitize(inspection['report_number'] ?? 'N/A');
+    final equipmentTag = sanitize(inspection['equipment_id'] ?? 'R-001');
+    final equipmentType = sanitize(inspection['equipment_type'] ?? 'Reactor');
+    final equipmentDescription = sanitize(inspection['title'] ?? equipmentType);
+    final area = sanitize(inspection['area'] ?? inspection['location'] ?? 'Plant 1');
     final reportDate = DateFormat('dd MMM yyyy').format(DateTime.now());
-    final inspectionDate = reportData['inspection_date'] ?? reportDate;
-    final inspectorName = inspection['inspector']?['username'] ?? 'Inspector';
+    final inspectionDate = sanitize(reportData['inspection_date'] ?? reportDate);
+    final inspectorName = sanitize(inspection['inspector']?['username'] ?? 'Inspector');
     final plant = area.split('>').first.trim(); // Extract plant from area
+    final currentYear = DateFormat('yyyy').format(DateTime.now());
     
     // Process photos
     final photoSections = reportData['photo_sections'] as Map<String, dynamic>? ?? {};
@@ -64,8 +69,8 @@ class PdfGenerator {
                photoNumber: '${section['section_number']}', // Just "1", "2" etc. Sub-labels are handled in layout
                image: sectionImages.first, // Legacy field, ignored if multiImages is set
                multiImages: sectionImages, // NEW: List of images for grid
-               finding: findingLines.join('\n'),
-               recommendation: recLines.join('\n'),
+               finding: sanitize(findingLines.join('\n')),
+               recommendation: sanitize(recLines.join('\n')),
                isSectionGroup: true,
              ));
           }
@@ -98,53 +103,88 @@ class PdfGenerator {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              _buildReportHeader(
-                reportNumber: reportNumber,
-                plant: plant,
-                reportDate: reportDate,
-                equipmentTag: equipmentTag,
-                equipmentDescription: equipmentDescription,
-                doshRegistration: reportNumber,
-                pageNumber: 1,
-              ),
-              
-              pw.SizedBox(height: 12),
-              
-              // Equipment Details Table
-              _buildEquipmentDetailsTable(
-                equipmentTag: equipmentTag,
-                equipmentType: equipmentType,
-                area: area,
-                inspectionDate: inspectionDate,
-              ),
+                // Header
+                _buildReportHeader(
+                  reportNumber: reportNumber,
+                  plant: plant,
+                  reportDate: reportDate,
+                  equipmentTag: equipmentTag,
+                  equipmentDescription: equipmentDescription,
+                  doshRegistration: '', // User requested empty
+                  pageNumber: 1,
+                  year: currentYear,
+                ),
               
               pw.SizedBox(height: 12),
               
               // FINDINGS, NDT & RECOMMENDATIONS Section Header
-              _buildPage1SectionHeader(),
-              
-              pw.SizedBox(height: 8),
-              
-              // Findings Table
-              _buildFindingsTable(
-                reportData: reportData,
-                requireExternal: requireExternal,
-                requireWeld: requireWeld,
-                requireInternal: requireInternal,
-                requireThickness: requireThickness,
+              pw.Container(
+                width: double.infinity,
+                color: PdfColors.grey300,
+                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                child: pw.Text(
+                  'FINDINGS, NDT & RECOMMENDATIONS',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                  textAlign: pw.TextAlign.center,
+                ),
               ),
-              
-              pw.SizedBox(height: 12),
-              
-              // NDT Results Table
-              _buildNDTTable(),
-              
-              pw.SizedBox(height: 12),
-              
-              // Recommendations Table
-              _buildRecommendationsTable(
-                recommendation: reportData['overall_recommendation'] ?? 'Continue routine inspection schedule',
+
+              pw.Container(
+                 padding: const pw.EdgeInsets.all(5),
+                 decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
+                 child: pw.Column(
+                   crossAxisAlignment: pw.CrossAxisAlignment.start,
+                   children: [
+                      // Disclaimer text (small, top of box)
+                      pw.Text(
+                        'Conditions: With respect to the internal surface, describe and state location of any scale, oil or other deposits... (static text)',
+                        style: const pw.TextStyle(fontSize: 5, color: PdfColors.grey700),
+                      ),
+                      pw.Divider(color: PdfColors.black),
+                      
+                      // FINDINGS
+                      pw.Text('FINDINGS', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                      pw.SizedBox(height: 4),
+                      
+                      pw.Text('Initial/Pre-Inspection - Not applicable', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(height: 8),
+                      
+                      pw.Text('Post/Final Inspection', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(height: 6),
+                      
+                      // External (includes Equipment)
+                      pw.Text('External', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                      ..._buildDetailedFindingsList(
+                          reportData: reportData, 
+                          type: 'external', // Group 1
+                          forcedPrefix: '1'
+                      ),
+                      
+                      pw.SizedBox(height: 10),
+                      
+                      // Internal
+                      if (requireInternal) ...[
+                        pw.Text('Internal', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                        ..._buildDetailedFindingsList(
+                            reportData: reportData, 
+                            type: 'internal', // Group 2
+                            forcedPrefix: '2'
+                        ),
+                      ],
+                      
+                      pw.SizedBox(height: 10),
+                      
+                      // NON-DESTRUCTIVE TESTINGS
+                      pw.Text('NON-DESTRUCTIVE TESTINGS', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                      pw.Text('UTTM: ${sanitizeText(reportData['thickness_finding'])}', style: const pw.TextStyle(fontSize: 9)),
+                      
+                      pw.SizedBox(height: 10),
+                      
+                      // RECOMMENDATIONS
+                      pw.Text('RECOMMENDATIONS', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                      ..._buildDetailedRecommendationsList(reportData: reportData),
+                   ],
+                 ),
               ),
               
               pw.Spacer(),
@@ -168,38 +208,13 @@ class PdfGenerator {
     // if (requireExternal) { ... }
     
     // Weld photos
-    if (requireWeld) {
-      for (int i = 0; i < weldImages.length; i++) {
-        String finding = reportData['weld_finding'] ?? 'Welds appear sound';
-        if (reportData['weld_condition'] != null) {
-          finding = '${reportData['weld_condition']}: $finding';
-        }
-        photosWithFindings.add(PhotoWithFinding(
-          photoNumber: photoCounter.toString(),
-          image: weldImages[i],
-          finding: finding,
-          recommendation: reportData['weld_section_recommendation'] ?? 'Nil',
-        ));
-        photoCounter++;
-      }
-    }
+    // Weld photos - Handled via equipment_sections_data
+    // if (requireWeld) { ... }
     
     // Internal photos
-    if (requireInternal && (reportData['internal_accessible'] ?? false)) {
-      for (int i = 0; i < internalImages.length; i++) {
-        String finding = reportData['internal_finding'] ?? 'Internal surfaces acceptable';
-        if (reportData['internal_condition'] != null) {
-          finding = '${reportData['internal_condition']}: $finding';
-        }
-        photosWithFindings.add(PhotoWithFinding(
-          photoNumber: photoCounter.toString(),
-          image: internalImages[i],
-          finding: finding,
-          recommendation: reportData['internal_section_recommendation'] ?? 'Nil',
-        ));
-        photoCounter++;
-      }
-    }
+    // Internal photos
+    // Handled via equipment_sections_data
+    // if (requireInternal && (reportData['internal_accessible'] ?? false)) { ... }
     
     if (photosWithFindings.isNotEmpty) {
       // Generate photo pages
@@ -256,60 +271,152 @@ class PdfGenerator {
     required String equipmentDescription,
     required String doshRegistration,
     required int pageNumber,
+    required String year,
   }) {
-    return pw.Container(
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.black, width: 1),
-      ),
-      child: pw.Row(
-        children: [
-          // Left section (empty)
-          pw.Container(
-            width: 80,
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(right: pw.BorderSide(color: PdfColors.black)),
-            ),
+    // Sanitize
+    plant = sanitizeText(plant);
+    equipmentTag = sanitizeText(equipmentTag);
+    equipmentDescription = sanitizeText(equipmentDescription);
+    doshRegistration = sanitizeText(doshRegistration);
+    reportNumber = sanitizeText(reportNumber);
+    reportDate = sanitizeText(reportDate);
+
+    // Style constants
+    final borderBlack = pw.Border.all(color: PdfColors.black, width: 1);
+    final textStyleBold = pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold);
+    final textStyleNormal = const pw.TextStyle(fontSize: 9);
+    final textStyleTitle = pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold);
+    final textStyleSubtitle = pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold);
+
+    return pw.Column(
+      children: [
+        // Top Box: Title and Report Details
+        pw.Container(
+          decoration: pw.BoxDecoration(border: borderBlack),
+          child: pw.Row(
+            children: [
+               // Title Section
+               pw.Expanded(
+                 flex: 3,
+                 child: pw.Container(
+                   decoration: const pw.BoxDecoration(
+                     border: pw.Border(right: pw.BorderSide(color: PdfColors.black)),
+                   ),
+                   padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+                   child: pw.Column(
+                     mainAxisAlignment: pw.MainAxisAlignment.center,
+                     children: [
+                       pw.Text('MAJOR TURNAROUND $year', style: textStyleTitle, textAlign: pw.TextAlign.center),
+                       pw.Text('PRESSURE VESSEL INSPECTION REPORT', style: textStyleSubtitle, textAlign: pw.TextAlign.center),
+                     ],
+                   ),
+                 ),
+               ),
+               // Report Details Section
+               pw.Expanded(
+                 flex: 1,
+                 child: pw.Column(
+                   children: [
+                     pw.Container(
+                       padding: const pw.EdgeInsets.all(5),
+                       width: double.infinity,
+                       decoration: const pw.BoxDecoration(
+                         border: pw.Border(bottom: pw.BorderSide(color: PdfColors.black)),
+                       ),
+                       child: pw.Column(
+                         crossAxisAlignment: pw.CrossAxisAlignment.start,
+                         children: [
+                           pw.Text('Report no.:', style: const pw.TextStyle(fontSize: 8)),
+                           pw.Text(reportNumber, style: textStyleBold),
+                         ],
+                       ),
+                     ),
+                     pw.Container(
+                       padding: const pw.EdgeInsets.all(5),
+                       width: double.infinity,
+                       child: pw.Column(
+                         crossAxisAlignment: pw.CrossAxisAlignment.start,
+                         children: [
+                           pw.Text('Report date:', style: const pw.TextStyle(fontSize: 8)),
+                           pw.Text(reportDate, style: textStyleBold),
+                         ],
+                       ),
+                     ),
+                   ],
+                 ),
+               ),
+            ],
           ),
-          
-          // Center section (Title)
-          pw.Expanded(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Column(
+        ),
+        
+        // Bottom Box: Equipment Details
+        pw.Container(
+          decoration: pw.BoxDecoration(
+            border: pw.Border(left: pw.BorderSide(color: PdfColors.black), right: pw.BorderSide(color: PdfColors.black), bottom: pw.BorderSide(color: PdfColors.black)),
+          ),
+          child: pw.Column(
+            children: [
+              // Row 1
+              pw.Container(
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(bottom: pw.BorderSide(color: PdfColors.black)),
+                ),
+                child: pw.Row(
+                  children: [
+                    pw.Expanded(
+                      child: pw.Container(
+                        padding: const pw.EdgeInsets.all(5),
+                        decoration: const pw.BoxDecoration(
+                          border: pw.Border(right: pw.BorderSide(color: PdfColors.black)),
+                        ),
+                        child: pw.RichText(text: pw.TextSpan(children: [
+                          pw.TextSpan(text: 'Equipment tag no.: ', style: textStyleBold),
+                          pw.TextSpan(text: equipmentTag, style: textStyleBold),
+                        ])),
+                      ),
+                    ),
+                    pw.Expanded(
+                      child: pw.Container(
+                        padding: const pw.EdgeInsets.all(5),
+                        child: pw.RichText(text: pw.TextSpan(children: [
+                          pw.TextSpan(text: 'Plant/Unit/Area: ', style: textStyleBold),
+                          pw.TextSpan(text: plant, style: textStyleNormal),
+                        ])),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Row 2
+              pw.Row(
                 children: [
-                  pw.Text(
-                    'MAJOR TURNAROUND 2025',
-                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                  pw.Expanded(
+                    child: pw.Container(
+                      padding: const pw.EdgeInsets.all(5),
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(right: pw.BorderSide(color: PdfColors.black)),
+                      ),
+                      child: pw.RichText(text: pw.TextSpan(children: [
+                        pw.TextSpan(text: 'Equipment description: ', style: textStyleBold),
+                        pw.TextSpan(text: equipmentDescription, style: textStyleNormal),
+                      ])),
+                    ),
                   ),
-                  pw.Text(
-                    'PRESSURE VESSEL INSPECTION REPORT',
-                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  pw.Expanded(
+                    child: pw.Container(
+                      padding: const pw.EdgeInsets.all(5),
+                      child: pw.RichText(text: pw.TextSpan(children: [
+                        pw.TextSpan(text: 'DOSH registration no.: ', style: textStyleBold),
+                        pw.TextSpan(text: doshRegistration, style: textStyleBold), // Should be empty
+                      ])),
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
-          
-          // Right section (Report details)
-          pw.Container(
-            width: 150,
-            padding: const pw.EdgeInsets.all(6),
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(left: pw.BorderSide(color: PdfColors.black)),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Report no.:', style: const pw.TextStyle(fontSize: 8)),
-                pw.Text(reportNumber, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Divider(),
-                pw.Text('Report date:', style: const pw.TextStyle(fontSize: 8)),
-                pw.Text(reportDate, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -369,8 +476,8 @@ class PdfGenerator {
     
     // External findings
     if (requireExternal) {
-      String externalFinding = reportData['external_finding'] ?? 'No issues detected';
-      String externalCondition = reportData['external_condition'] ?? 'Satisfactory';
+      String externalFinding = (reportData['external_finding'] ?? 'No issues detected').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
+      String externalCondition = (reportData['external_condition'] ?? 'Satisfactory').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
       findings.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(left: 10, top: 4),
@@ -385,8 +492,8 @@ class PdfGenerator {
     
     // Weld findings
     if (requireWeld) {
-      String weldFinding = reportData['weld_finding'] ?? 'Welds appear sound';
-      String weldCondition = reportData['weld_condition'] ?? 'Satisfactory';
+      String weldFinding = (reportData['weld_finding'] ?? 'Welds appear sound').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
+      String weldCondition = (reportData['weld_condition'] ?? 'Satisfactory').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
       findings.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(left: 10, top: 4),
@@ -401,8 +508,8 @@ class PdfGenerator {
     
     // Internal findings
     if (requireInternal && (reportData['internal_accessible'] ?? false)) {
-      String internalFinding = reportData['internal_finding'] ?? 'Internal surfaces acceptable';
-      String internalCondition = reportData['internal_condition'] ?? 'Satisfactory';
+      String internalFinding = (reportData['internal_finding'] ?? 'Internal surfaces acceptable').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
+      String internalCondition = (reportData['internal_condition'] ?? 'Satisfactory').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
       findings.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(left: 10, top: 4),
@@ -417,7 +524,7 @@ class PdfGenerator {
     
     // Thickness findings (if applicable)
     if (requireThickness) {
-      String thicknessCondition = reportData['thickness_condition'] ?? 'Satisfactory';
+      String thicknessCondition = (reportData['thickness_condition'] ?? 'Satisfactory').toString().replaceAll(RegExp(r'[^\x00-\x7F]'), '-');
       findings.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(left: 10, top: 4),
@@ -479,7 +586,7 @@ class PdfGenerator {
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Approved by [Client]:', style: const pw.TextStyle(fontSize: 8)),
+                      pw.Text('Approved by (Client):', style: const pw.TextStyle(fontSize: 8)),
                       pw.SizedBox(height: 30),
                     ],
                   ),
@@ -547,146 +654,92 @@ class PdfGenerator {
         pw.TableRow(
           children: [
             _buildTableCell('Equipment Tag:', bold: true),
-            _buildTableCell(equipmentTag),
+            _buildTableCell(sanitizeText(equipmentTag)),
             _buildTableCell('Equipment Type:', bold: true),
-            _buildTableCell(equipmentType),
+            _buildTableCell(sanitizeText(equipmentType)),
           ],
         ),
         pw.TableRow(
           children: [
             _buildTableCell('Location/Area:', bold: true),
-            _buildTableCell(area),
+            _buildTableCell(sanitizeText(area)),
             _buildTableCell('Inspection Date:', bold: true),
-            _buildTableCell(inspectionDate),
+            _buildTableCell(sanitizeText(inspectionDate)),
           ],
         ),
       ],
     );
   }
 
-  static pw.Widget _buildFindingsTable({
+  static List<pw.Widget> _buildDetailedFindingsList({
     required Map<String, dynamic> reportData,
-    required bool requireExternal,
-    required bool requireWeld,
-    required bool requireInternal,
-    required bool requireThickness,
+    required String type, 
+    required String forcedPrefix,
   }) {
-    List<pw.TableRow> rows = [
-      // Header
-      pw.TableRow(
-        decoration: pw.BoxDecoration(color: PdfColors.grey300),
-        children: [
-          _buildTableCell('INSPECTION FINDINGS', isHeader: true),
-          _buildTableCell('CONDITION', isHeader: true),
-          _buildTableCell('DETAILS', isHeader: true),
-        ],
-      ),
-    ];
-
-    // Equipment (always included)
-    rows.add(pw.TableRow(
-      children: [
-        _buildTableCell('Equipment Identification'),
-        _buildTableCell('N/A'),
-        _buildTableCell(reportData['equipment_finding'] ?? 'Equipment in good condition'),
-      ],
-    ));
-
-    // External Visual
-    if (requireExternal) {
-      rows.add(pw.TableRow(
-        children: [
-          _buildTableCell('External Visual'),
-          _buildTableCell(reportData['external_condition'] ?? 'Satisfactory'),
-          _buildTableCell(reportData['external_finding'] ?? 'No visible defects'),
-        ],
-      ));
+    List<pw.Widget> widgets = [];
+    final sections = reportData['equipment_sections_data'] as List<dynamic>? ?? [];
+    
+    // Filter logic based on explicit 'type' field
+    // External Group: 'equipment', 'external', 'weld'
+    // Internal Group: 'internal'
+    
+    for (var section in sections) {
+       String sectionType = (section['type'] ?? 'equipment').toString();
+       bool isInternal = sectionType == 'internal';
+       
+       // If requesting 'external' list, skip internal sections
+       if (type == 'external' && isInternal) continue;
+       
+       // If requesting 'internal' list, skip non-internal sections
+       if (type == 'internal' && !isInternal) continue;
+       
+       List<String> findings = (section['findings'] as List<dynamic>? ?? []).cast<String>();
+       
+       for (var f in findings) {
+         widgets.add(pw.Padding(
+           padding: const pw.EdgeInsets.only(bottom: 2),
+           child: pw.Text(
+             PdfGenerator.sanitizeText(f),
+             style: const pw.TextStyle(fontSize: 9),
+           ),
+         ));
+       }
     }
-
-    // Weld Visual
-    if (requireWeld) {
-      rows.add(pw.TableRow(
-        children: [
-          _buildTableCell('Weld Visual'),
-          _buildTableCell(reportData['weld_condition'] ?? 'Satisfactory'),
-          _buildTableCell(reportData['weld_finding'] ?? 'Welds appear sound'),
-        ],
-      ));
+    
+    if (widgets.isEmpty) {
+        widgets.add(pw.Text('Nil', style: const pw.TextStyle(fontSize: 9)));
     }
-
-    // Internal Visual
-    if (requireInternal && (reportData['internal_accessible'] ?? false)) {
-      rows.add(pw.TableRow(
-        children: [
-          _buildTableCell('Internal Visual'),
-          _buildTableCell(reportData['internal_condition'] ?? 'Satisfactory'),
-          _buildTableCell(reportData['internal_finding'] ?? 'Internal surfaces acceptable'),
-        ],
-      ));
-    }
-
-    // Thickness
-    if (requireThickness) {
-      rows.add(pw.TableRow(
-        children: [
-          _buildTableCell('Thickness Measurement'),
-          _buildTableCell(reportData['thickness_condition'] ?? 'Satisfactory'),
-          _buildTableCell('Measurements within acceptable range - refer to thickness data'),
-        ],
-      ));
-    }
-
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
-      columnWidths: {
-        0: const pw.FlexColumnWidth(2),
-        1: const pw.FlexColumnWidth(1.5),
-        2: const pw.FlexColumnWidth(3),
-      },
-      children: rows,
-    );
+    
+    return widgets;
   }
 
-  static pw.Widget _buildNDTTable() {
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
-      children: [
-        pw.TableRow(
-          decoration: pw.BoxDecoration(color: PdfColors.grey300),
-          children: [
-            _buildTableCell('NON-DESTRUCTIVE TESTING (NDT)', isHeader: true),
-            _buildTableCell('RESULT', isHeader: true),
-          ],
-        ),
-        pw.TableRow(
-          children: [
-            _buildTableCell('Ultrasonic Thickness Measurement (UTTM)'),
-            _buildTableCell('No significant wall loss detected. Refer to UTTM report for details.'),
-          ],
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _buildRecommendationsTable({
-    required String recommendation,
+  static List<pw.Widget> _buildDetailedRecommendationsList({
+    required Map<String, dynamic> reportData,
   }) {
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
-      children: [
-        pw.TableRow(
-          decoration: pw.BoxDecoration(color: PdfColors.grey300),
-          children: [
-            _buildTableCell('OVERALL RECOMMENDATIONS', isHeader: true),
-          ],
-        ),
-        pw.TableRow(
-          children: [
-            _buildTableCell(recommendation, minHeight: 40),
-          ],
-        ),
-      ],
-    );
+    List<pw.Widget> widgets = [];
+    final sections = reportData['equipment_sections_data'] as List<dynamic>? ?? [];
+    
+    for (var section in sections) {
+       List<String> recs = (section['recommendations'] as List<dynamic>? ?? []).cast<String>();
+       for (var r in recs) {
+          // Check for Nil/nil
+          if (r.toLowerCase().contains('nil')) continue;
+          
+          widgets.add(pw.Padding(
+           padding: const pw.EdgeInsets.only(bottom: 2),
+           child: pw.Text(
+             PdfGenerator.sanitizeText(r),
+             style: const pw.TextStyle(fontSize: 9),
+           ),
+         ));
+       }
+    }
+    
+    if (widgets.isEmpty) {
+       widgets.add(pw.Text('To be monitored on next opportunity.', style: const pw.TextStyle(fontSize: 9)));
+    }
+    
+    return widgets;
   }
 
   static pw.Widget _buildTableCell(
@@ -743,8 +796,9 @@ class PdfGenerator {
                   reportDate: reportDate,
                   equipmentTag: equipmentTag,
                   equipmentDescription: equipmentDescription,
-                  doshRegistration: doshRegistration,
+                  doshRegistration: '', // User requested empty
                   pageNumber: pageNumber,
+                  year: DateFormat('yyyy').format(DateTime.now()), // Assuming current year for photo pages too
                 ),
                 
                 pw.SizedBox(height: 10),
@@ -911,7 +965,7 @@ class PdfGenerator {
                             fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
                     pw.SizedBox(height: 4),
                     pw.Text(
-                      photoData.finding,
+                      sanitizeText(photoData.finding),
                       style:
                           const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
                     ),
@@ -921,7 +975,7 @@ class PdfGenerator {
                             fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
                     pw.SizedBox(height: 4),
                     pw.Text(
-                      photoData.recommendation,
+                      sanitizeText(photoData.recommendation),
                       style:
                           const pw.TextStyle(fontSize: 8, color: PdfColors.blue),
                     ),
@@ -985,7 +1039,7 @@ class PdfGenerator {
                           fontSize: 9, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 4),
                   pw.Text(
-                    photoData.finding,
+                    sanitizeText(photoData.finding),
                     style:
                         const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
                   ),
@@ -995,7 +1049,7 @@ class PdfGenerator {
                           fontSize: 9, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 4),
                   pw.Text(
-                    photoData.recommendation,
+                    sanitizeText(photoData.recommendation),
                     style:
                         const pw.TextStyle(fontSize: 9, color: PdfColors.blue),
                   ),
@@ -1006,6 +1060,21 @@ class PdfGenerator {
         ],
       ),
     );
+  }
+
+  // ========== UTILS ==========
+  static String sanitizeText(String? text) {
+    if (text == null) return '';
+    return text
+        .replaceAll('–', '-')
+        .replaceAll('—', '-')
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('‘', "'")
+        .replaceAll('’', "'")
+        .replaceAll('•', '*')
+        .replaceAll(RegExp(r'\u00A0'), ' ') // Non-breaking space
+        .replaceAll(RegExp(r'[^\x00-\x7F]'), ' '); // Strip any other non-ASCII
   }
 }
 
