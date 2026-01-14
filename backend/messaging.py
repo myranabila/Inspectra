@@ -37,6 +37,7 @@ async def send_message(
     subject: str = Form(None),
     inspection_id: int = Form(None),
     reply_to_id: int = Form(None),
+    created_at: str = Form(None),  # Accept client-side timestamp
     attachment: UploadFile = File(None),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -82,6 +83,15 @@ async def send_message(
             else:
                 attachment_type = "file"
 
+        # Parse created_at if provided
+        message_time = datetime.now()
+        if created_at:
+            try:
+                # Handle ISO format with potential Z or offset
+                message_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                pass # Fallback to server time if invalid
+
         # Create message
         new_message = models.Message(
             thread_id=thread_id,
@@ -94,7 +104,8 @@ async def send_message(
             status=models.MessageStatusEnum.unread,
             attachment_url=attachment_url,
             attachment_type=attachment_type,
-            attachment_name=attachment_name
+            attachment_name=attachment_name,
+            created_at=message_time
         )
         db.add(new_message)
         db.commit()
@@ -115,6 +126,37 @@ async def send_message(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+
+# Delete message
+@router.delete("/{message_id}")
+async def delete_message(
+    message_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a message - only if sent by current user"""
+    try:
+        message = db.query(models.Message).filter(models.Message.id == message_id).first()
+        
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+            
+        if message.sender_id != current_user.id:
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only delete your own messages"
+            )
+            
+        db.delete(message)
+        db.commit()
+        
+        return {"message": "Message deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete message: {str(e)}")
 
 # Get conversation threads (Gmail-style)
 @router.get("/threads")

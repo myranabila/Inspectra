@@ -11,6 +11,7 @@ class ManagerService {
     required String inspectionTitle, // Manager-defined inspection title
     required String inspectionType,
     required String equipmentTag,
+    String? doshRegistration,  // DOSH Registration Number (optional)
     required String location,
     required String dueDate,
     required bool requireExternal,
@@ -28,6 +29,7 @@ class ManagerService {
           'title': inspectionTitle, // Manager-defined title
           'inspection_type': inspectionType,
           'equipment_tag': equipmentTag,
+          'dosh_registration': doshRegistration,  // DOSH Registration Number
           'location': location,
           'due_date': dueDate,
           'require_external': requireExternal,
@@ -261,6 +263,21 @@ class ManagerService {
       );
     } catch (e) {
       throw Exception('Failed to load locations: $e');
+    }
+  }
+  // Delete inspection
+  static Future<void> deleteInspection(int inspectionId) async {
+    try {
+      final token = await AuthService.getToken();
+      await ApiService.delete(
+        url: '$baseUrl/delete/inspection/$inspectionId',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (e) {
+      throw Exception('Failed to delete inspection: $e');
     }
   }
 }

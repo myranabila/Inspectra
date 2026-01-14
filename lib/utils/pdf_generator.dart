@@ -32,9 +32,12 @@ class PdfGenerator {
     final area = sanitize(inspection['area'] ?? inspection['location'] ?? 'Plant 1');
     final reportDate = DateFormat('dd MMM yyyy').format(DateTime.now());
     final inspectionDate = sanitize(reportData['inspection_date'] ?? reportDate);
-    final inspectorName = sanitize(inspection['inspector']?['username'] ?? 'Inspector');
+    final inspectorName = sanitize(inspection['inspector_name'] ?? inspection['inspector']?['username'] ?? 'Inspector');
     final plant = area.split('>').first.trim(); // Extract plant from area
     final currentYear = DateFormat('yyyy').format(DateTime.now());
+    
+    // Get DOSH registration from inspection data (manually entered by manager)
+    final doshRegistration = sanitize(inspection['dosh_registration'] ?? '');
     
     // Process photos
     final photoSections = reportData['photo_sections'] as Map<String, dynamic>? ?? {};
@@ -110,7 +113,7 @@ class PdfGenerator {
                   reportDate: reportDate,
                   equipmentTag: equipmentTag,
                   equipmentDescription: equipmentDescription,
-                  doshRegistration: '', // User requested empty
+                  doshRegistration: doshRegistration, // Equipment-specific DOSH number
                   pageNumber: 1,
                   year: currentYear,
                 ),
@@ -190,7 +193,11 @@ class PdfGenerator {
               pw.Spacer(),
               
               // Footer with signatures
-              _buildPage1Footer(inspectorName: inspectorName),
+              // Footer with signatures
+              _buildPage1Footer(
+                inspectorName: inspectorName,
+                managerName: inspection['manager_username'] ?? inspection['manager']?['username']
+              ),
             ],
           );
         },
@@ -225,7 +232,7 @@ class PdfGenerator {
         reportDate: reportDate,
         equipmentTag: equipmentTag,
         equipmentDescription: equipmentDescription,
-        doshRegistration: reportNumber,
+        doshRegistration: doshRegistration, // Equipment-specific DOSH number
         inspectorName: inspectorName,
       );
       
@@ -539,7 +546,10 @@ class PdfGenerator {
     return findings;
   }
 
-  static pw.Widget _buildPage1Footer({required String inspectorName}) {
+  static pw.Widget _buildPage1Footer({
+    required String inspectorName,
+    String? managerName,
+  }) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.black),
@@ -575,7 +585,9 @@ class PdfGenerator {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text('Reviewed by:', style: const pw.TextStyle(fontSize: 8)),
-                      pw.SizedBox(height: 30),
+                      pw.SizedBox(height: 20),
+                      if (managerName != null && managerName.isNotEmpty)
+                         pw.Text(managerName, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -796,7 +808,7 @@ class PdfGenerator {
                   reportDate: reportDate,
                   equipmentTag: equipmentTag,
                   equipmentDescription: equipmentDescription,
-                  doshRegistration: '', // User requested empty
+                  doshRegistration: doshRegistration, // Equipment-specific DOSH number
                   pageNumber: pageNumber,
                   year: DateFormat('yyyy').format(DateTime.now()), // Assuming current year for photo pages too
                 ),

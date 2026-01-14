@@ -77,4 +77,24 @@ class ApiService {
       throw Exception('Network error: $e');
     }
   }
+
+  // Generic DELETE request
+  static Future<void> delete({
+    required String url,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: headers ?? {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final errorBody = jsonDecode(response.body);
+        throw Exception(errorBody['detail'] ?? 'Delete request failed');
+      }
+    } catch (e) {
+      throw Exception('Network error: $e');
+    }
+  }
 }

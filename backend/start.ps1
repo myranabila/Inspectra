@@ -6,7 +6,7 @@ Write-Host "============================================================" -Foreg
 Set-Location C:\workshop2\Inspectra\backend
 
 Write-Host "`n[Step 1/3] Recreating database tables..." -ForegroundColor Yellow
-python -c "from db import engine; import models; models.Base.metadata.drop_all(bind=engine); models.Base.metadata.create_all(bind=engine); print('Tables created successfully')"
+python -c "from db import engine; import models; models.Base.metadata.create_all(bind=engine); print('Tables ensured/created successfully')"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Database tables recreated" -ForegroundColor Green
@@ -15,15 +15,15 @@ if ($LASTEXITCODE -eq 0) {
     exit 1
 }
 
-Write-Host "`n[Step 2/3] Creating sample data..." -ForegroundColor Yellow
-python create_sample_data.py
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Sample data created" -ForegroundColor Green
-} else {
-    Write-Host "Failed to create sample data" -ForegroundColor Red
-    exit 1
-}
+# Write-Host "`n[Step 2/3] Creating sample data..." -ForegroundColor Yellow
+# python create_sample_data.py
+#
+# if ($LASTEXITCODE -eq 0) {
+#     Write-Host "Sample data created" -ForegroundColor Green
+# } else {
+#     Write-Host "Failed to create sample data" -ForegroundColor Red
+#     exit 1
+# }
 
 Write-Host "`n[Step 3/3] Starting backend server..." -ForegroundColor Yellow
 Write-Host "Backend URL: http://127.0.0.1:8000" -ForegroundColor Cyan

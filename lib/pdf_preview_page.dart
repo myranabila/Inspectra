@@ -150,9 +150,10 @@ class _PdfPreviewPageState extends State<PdfPreviewPage> with TickerProviderStat
                 const SizedBox(
                   width: 50,
                   height: 50,
-                  child: CircularProgressIndicator(
+                child: CircularProgressIndicator(
                     strokeWidth: 3,
                     color: AppTheme.primaryRed,
+                    strokeCap: StrokeCap.round,
                   ),
                 ),
                 const SizedBox(height: 24),

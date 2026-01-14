@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:html' as html;
 import 'config/api_config.dart';
 import 'services/auth_service.dart';
+import 'services/dashboard_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/collapsible_sidebar.dart';
 import 'inspection_workflow_page.dart';
@@ -374,6 +376,11 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
     final status = inspection['status'] as String;
     final statusColor = AppTheme.getStatusColor(status);
     final isRejected = status == 'rejected';
+    final isPendingReview = status == 'pending_review';
+    
+    // Determine if card should be clickable
+    // Only scheduled, rejected, and completed are clickable
+    final isClickable = status == 'scheduled' || status == 'rejected' || status == 'completed';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -389,176 +396,241 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => InspectionWorkflowPage(inspection: inspection),
-              ),
-            );
-          },
+          onTap: isClickable ? () async {
+            // For completed inspections, open PDF in new tab
+            if (status == 'completed') {
+              try {
+                // Fetch fresh details to ensure PDF path is available
+                final details = await DashboardService.getInspectionDetails(inspection['id']);
+                final pdfPath = details['pdf_report_path'];
+                
+                if (pdfPath != null && pdfPath.toString().isNotEmpty) {
+                  // Replace backslashes with forward slashes for URL
+                  final cleanPath = pdfPath.toString().replaceAll('\\', '/');
+                  final pdfUrl = '${ApiConfig.baseUrl}/$cleanPath';
+                  // Open PDF in new browser tab
+                  html.window.open(pdfUrl, '_blank');
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('PDF report not available (Path: $pdfPath, ID: ${inspection['id']})'),
+                        backgroundColor: AppTheme.primaryRed,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      backgroundColor: AppTheme.primaryRed,
+                    ),
+                  );
+                }
+              }
+            } else {
+              // For scheduled and rejected, navigate to workflow
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => InspectionWorkflowPage(inspection: inspection),
+                ),
+              );
+            }
+          } : null,  // Null onTap makes it non-clickable
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          AppTheme.getStatusIcon(status),
+                          color: statusColor,
+                          size: 24,
+                        ),
                       ),
-                      child: Icon(
-                        AppTheme.getStatusIcon(status),
-                        color: statusColor,
-                        size: 24,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              inspection['title'] ?? 'Untitled',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.location_on_outlined, size: 14, color: AppTheme.textMuted),
+                                const SizedBox(width: 4),
+                                Text(
+                                  inspection['location'] ?? 'N/A',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppTheme.statusBadge(status),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        if (inspection['equipment_id'] != null || inspection['equipment_type'] != null)
+                          _buildInfoRow(Icons.category_rounded, 'Equipment', 
+                              '${inspection['equipment_id'] ?? 'N/A'} - ${inspection['equipment_type'] ?? 'N/A'}'),
+                        if (inspection['scheduled_date'] != null) ...[
+                          if (inspection['equipment_id'] != null) const SizedBox(height: 10),
+                          _buildInfoRow(Icons.calendar_today_rounded, 'Scheduled', inspection['scheduled_date']),
+                        ],
+                        if (inspection['completion_date'] != null) ...[
+                          const SizedBox(height: 10),
+                          _buildInfoRow(Icons.check_circle_rounded, 'Completed', inspection['completion_date'], 
+                              color: AppTheme.statusCompleted),
+                        ],
+                      ],
+                    ),
+                  ),
+                  
+                  // Show "Under Manager Review" notice for pending_review status
+                  if (isPendingReview) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.statusPendingReview.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.statusPendingReview.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lock_clock_rounded, size: 16, color: AppTheme.statusPendingReview),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Under manager review - Viewing disabled',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.statusPendingReview,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
+                  ],
+                  
+                  if (inspection['rejection_count'] != null && inspection['rejection_count'] > 0) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.statusRejected.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.replay_rounded, size: 14, color: AppTheme.statusRejected),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Rejected ${inspection['rejection_count']}x',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.statusRejected,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  
+                  if (isRejected && (inspection['rejection_reason'] != null || inspection['rejection_feedback'] != null)) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.statusRejected.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.statusRejected.withValues(alpha: 0.2)),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            inspection['title'] ?? 'Untitled',
-                            style: GoogleFonts.inter(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
                           Row(
                             children: [
-                              Icon(Icons.location_on_outlined, size: 14, color: AppTheme.textMuted),
-                              const SizedBox(width: 4),
+                              Icon(Icons.warning_amber_rounded, size: 18, color: AppTheme.statusRejected),
+                              const SizedBox(width: 8),
                               Text(
-                                inspection['location'] ?? 'N/A',
+                                'Rejection Details',
                                 style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.statusRejected,
                                   fontSize: 13,
-                                  color: AppTheme.textSecondary,
                                 ),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    AppTheme.statusBadge(status),
-                  ],
-                ),
-                
-                const SizedBox(height: 16),
-                
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      if (inspection['equipment_id'] != null || inspection['equipment_type'] != null)
-                        _buildInfoRow(Icons.category_rounded, 'Equipment', 
-                            '${inspection['equipment_id'] ?? 'N/A'} - ${inspection['equipment_type'] ?? 'N/A'}'),
-                      if (inspection['scheduled_date'] != null) ...[
-                        if (inspection['equipment_id'] != null) const SizedBox(height: 10),
-                        _buildInfoRow(Icons.calendar_today_rounded, 'Scheduled', inspection['scheduled_date']),
-                      ],
-                      if (inspection['completion_date'] != null) ...[
-                        const SizedBox(height: 10),
-                        _buildInfoRow(Icons.check_circle_rounded, 'Completed', inspection['completion_date'], 
-                            color: AppTheme.statusCompleted),
-                      ],
-                    ],
-                  ),
-                ),
-                
-                if (inspection['rejection_count'] != null && inspection['rejection_count'] > 0) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.statusRejected.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.replay_rounded, size: 14, color: AppTheme.statusRejected),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Rejected ${inspection['rejection_count']}x',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.statusRejected,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                
-                if (isRejected && (inspection['rejection_reason'] != null || inspection['rejection_feedback'] != null)) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.statusRejected.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.statusRejected.withValues(alpha: 0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.warning_amber_rounded, size: 18, color: AppTheme.statusRejected),
-                            const SizedBox(width: 8),
+                          if (inspection['rejection_reason'] != null) ...[
+                            const SizedBox(height: 10),
                             Text(
-                              'Rejection Details',
+                              inspection['rejection_reason'],
                               style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.statusRejected,
                                 fontSize: 13,
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
-                        ),
-                        if (inspection['rejection_reason'] != null) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            inspection['rejection_reason'],
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.w500,
+                          if (inspection['rejection_feedback'] != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              inspection['rejection_feedback'],
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
+                           ],
                         ],
-                        if (inspection['rejection_feedback'] != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            inspection['rejection_feedback'],
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
+             ),
           ),
         ),
       ),

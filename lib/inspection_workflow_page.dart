@@ -34,7 +34,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
   late bool _requireExternal;
   late bool _requireWeld;
   late bool _requireInternal;
-  late bool _requireThickness;
+  bool get _requireThickness => false; // formerly late bool
 
   // Defect type options (used for analytics)
   final List<String> _defectOptions = [
@@ -95,7 +95,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
   // Section 4: Internal Visual (optional)
 
   // Section 4: Internal Visual
-  bool _internalAccessible = false; // Still used to toggle section visibility
+// _internalAccessible removed
   List<InternalSectionData> _internalSections = [
     InternalSectionData(sectionNumber: 4) // Initialize after Weld (which is 3)
   ];
@@ -173,9 +173,9 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     super.initState();
     // Load scope requirements from Manager's assignment
     _requireExternal = widget.inspection['require_external'] ?? true;
-    _requireWeld = widget.inspection['require_weld'] ?? true;
+    _requireWeld = widget.inspection['require_weld'] ?? false;  // Default false to match backend
     _requireInternal = widget.inspection['require_internal'] ?? false;
-    _requireThickness = widget.inspection['require_thickness'] ?? false;
+    // _requireThickness = false;
     
     // Ensure section numbers are strictly sequential on init
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -637,8 +637,8 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
       }
     }
 
-    // Internal Visual - only if required by manager AND accessible
-    if (_requireInternal && _internalAccessible) {
+    // Internal Visual - only if required by manager
+    if (_requireInternal) {
       if (_internalSections.isEmpty) {
         missingItems.add('Internal Visual: At least one section is required');
       } else {
@@ -881,7 +881,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
       }
 
       // 4. Process INTERNAL VISUAL Sections
-      if (_internalAccessible) {
+      if (_requireInternal) {
         for (var section in _internalSections) {
           List<String> sectionFindings = [];
           List<String> sectionRecommendations = [];
@@ -938,14 +938,14 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
         'weld_recommendation': 'See sections above',
 
         // Internal Visual with NEW fields from first section (summary)
-        'internal_accessible': _internalAccessible,
-        'internal_finding': _internalAccessible && _internalSections.isNotEmpty 
+        'internal_accessible': _requireInternal,
+        'internal_finding': _requireInternal && _internalSections.isNotEmpty 
              ? (_internalSections.first.defectType ?? 'Nil') 
              : 'Nil',
-        'internal_condition': _internalAccessible && _internalSections.isNotEmpty
+        'internal_condition': _requireInternal && _internalSections.isNotEmpty
             ? (_internalSections.first.condition ?? 'Satisfactory')
             : 'Satisfactory',
-        'internal_section_recommendation': _internalAccessible && _internalSections.isNotEmpty
+        'internal_section_recommendation': _requireInternal && _internalSections.isNotEmpty
             ? (_internalSections.first.recommendation ?? 'Nil')
             : 'Nil',
         'internal_recommendation': 'See sections above',
@@ -1350,15 +1350,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
                     _buildInternalSection(),
                   ),
                 ],
-                // Only show Thickness if Manager requires it
-                if (_requireThickness) ...[
-                  const SizedBox(height: 24),
-                  _buildSectionCard(
-                    'Thickness Measurement',
-                    Icons.straighten_rounded,
-                    _buildThicknessSection(),
-                  ),
-                ],
+
                 const SizedBox(height: 24),
                 _buildSectionCard(
                   'Summary & Overall Condition',
@@ -1601,6 +1593,34 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
           ),
           const SizedBox(height: 20),
 
+          // DOSH Registration Number
+          Text(
+            'DOSH Registration Number:',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppTheme.backgroundGrey,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              widget.inspection['dosh_registration'] ?? 'N/A',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
           // Inspection Date
           Text(
             'Inspection Date:',
@@ -1632,7 +1652,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
               _buildSectionBadge('External Visual', _requireExternal),
               _buildSectionBadge('Weld Visual', _requireWeld),
               _buildSectionBadge('Internal Visual', _requireInternal),
-              _buildSectionBadge('Thickness', _requireThickness),
+
             ],
           ),
         ],
@@ -2337,273 +2357,160 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SwitchListTile(
-          title: Text(
-            'Internal Inspection Accessible?',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-          ),
-          value: _internalAccessible,
-          onChanged: (v) => setState(() => _internalAccessible = v),
-          activeColor: AppTheme.primaryRed,
+        Text(
+          'Internal Shell, Heads, Nozzles, Internals',
+          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
         ),
-        if (_internalAccessible) ...[
-          const SizedBox(height: 16),
-          
-          ..._internalSections.asMap().entries.map((entry) {
-            final index = entry.key;
-            final section = entry.value;
-            
-            return Container(
-              margin: const EdgeInsets.only(bottom: 24),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                       Text(
-                        'Section ${section.sectionNumber}',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: AppTheme.primaryRed, size: 20),
-                        onPressed: () => _removeInternalSection(index),
-                        tooltip: 'Remove Section',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // PHOTOS
-                  _buildPhotoUploadSection(
-                    'internal',
-                    section.photos,
-                    'Internal Photos (Max 3)',
-                    sectionIndex: index,
-                    sectionNumber: section.sectionNumber,
-                    maxPhotos: 3,
-                  ),
-                  const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        ..._internalSections.asMap().entries.map((entry) {
+          final index = entry.key;
+          final section = entry.value;
 
-                  if (section.photos.isEmpty)
-                   Padding(
-                     padding: const EdgeInsets.symmetric(vertical: 8.0),
-                     child: Row(
-                       children: [
-                         const Icon(Icons.info_outline, size: 16, color: Colors.orange),
-                         const SizedBox(width: 8),
-                         Text(
-                           'Please add a photo to enable details.',
-                           style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
-                         ),
-                       ],
-                     ),
-                   ),
-
-                   Opacity(
-                    opacity: section.photos.isEmpty ? 0.5 : 1.0,
-                    child: IgnorePointer(
-                      ignoring: section.photos.isEmpty,
-                      child: Column(
-                        children: [
-                           // COMPONENT
-                           _buildDropdownField(
-                            label: 'Component *',
-                            value: section.componentName,
-                            items: _internalComponents,
-                            onChanged: (v) => setState(() => section.componentName = v),
-                            hint: 'Select component',
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // FINDING (DEFECT)
-                          _buildDropdownField(
-                            label: 'Finding (Defect Type) *',
-                            value: section.defectType,
-                            items: _defectOptions,
-                            onChanged: (v) {
-                               setState(() {
-                                 section.defectType = v;
-                                 if (v == 'Nil') {
-                                   section.condition = 'Satisfactory';
-                                   section.recommendation = 'Nil';
-                                 } else {
-                                   section.condition = 'Observation';
-                                   section.recommendation = 'Monitor';
-                                 }
-                               });
-                            },
-                            hint: 'Select defect type',
-                          ),
-                          const SizedBox(height: 16),
-
-                          // CONDITION
-                          _buildDropdownField(
-                            label: 'Condition *',
-                            value: section.condition,
-                            items: _conditionOptions,
-                            onChanged: (v) => setState(() => section.condition = v),
-                            hint: 'Select condition',
-                          ),
-                          const SizedBox(height: 16),
-
-                          // RECOMMENDATION
-                          _buildDropdownField(
-                            label: 'Section Recommendation *',
-                            value: section.recommendation,
-                            items: _sectionRecommendationOptions,
-                            onChanged: (v) => setState(() => section.recommendation = v),
-                            hint: 'Select recommendation',
-                          ),
-                        ],
+          return Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Section ${section.sectionNumber}',
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
-                   ),
-                ],
-              ),
-            );
-          }).toList(),
-          
-          const SizedBox(height: 16),
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: _addInternalSection,
-              icon: const Icon(Icons.add_circle_outline, size: 18),
-              label: const Text('Add Section'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryRed,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppTheme.primaryRed, size: 20),
+                      onPressed: () => _removeInternalSection(index),
+                      tooltip: 'Remove Section',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // PHOTOS
+                _buildPhotoUploadSection(
+                  'internal',
+                  section.photos,
+                  'Internal Photos (Max 3)',
+                  sectionIndex: index,
+                  sectionNumber: section.sectionNumber,
+                  maxPhotos: 3,
+                ),
+                const SizedBox(height: 20),
+
+                if (section.photos.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Please add a photo to enable details.',
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.orange.shade800),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                Opacity(
+                  opacity: section.photos.isEmpty ? 0.5 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: section.photos.isEmpty,
+                    child: Column(
+                      children: [
+                        // COMPONENT
+                        _buildDropdownField(
+                          label: 'Component *',
+                          value: section.componentName,
+                          items: _internalComponents,
+                          onChanged: (v) => setState(() => section.componentName = v),
+                          hint: 'Select component',
+                        ),
+                        const SizedBox(height: 16),
+
+                        // FINDING (DEFECT)
+                        _buildDropdownField(
+                          label: 'Finding (Defect Type) *',
+                          value: section.defectType,
+                          items: _defectOptions,
+                          onChanged: (v) {
+                            setState(() {
+                              section.defectType = v;
+                              if (v == 'Nil') {
+                                section.condition = 'Satisfactory';
+                                section.recommendation = 'Nil';
+                              } else {
+                                section.condition = 'Observation';
+                                section.recommendation = 'Monitor';
+                              }
+                            });
+                          },
+                          hint: 'Select defect type',
+                        ),
+                        const SizedBox(height: 16),
+
+                        // CONDITION
+                        _buildDropdownField(
+                          label: 'Condition *',
+                          value: section.condition,
+                          items: _conditionOptions,
+                          onChanged: (v) => setState(() => section.condition = v),
+                          hint: 'Select condition',
+                        ),
+                        const SizedBox(height: 16),
+
+                        // RECOMMENDATION
+                        _buildDropdownField(
+                          label: 'Section Recommendation *',
+                          value: section.recommendation,
+                          items: _sectionRecommendationOptions,
+                          onChanged: (v) => setState(() => section.recommendation = v),
+                          hint: 'Select recommendation',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+
+        const SizedBox(height: 16),
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: _addInternalSection,
+            icon: const Icon(Icons.add_circle_outline, size: 18),
+            label: const Text('Add Section'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
           ),
-        ] else
-          Text(
-            'Internal inspection not performed',
-            style: GoogleFonts.inter(color: Colors.grey.shade600, fontSize: 13),
-          ),
+        ),
       ],
     );
   }
 
 
   Widget _buildThicknessSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Record measured thickness values only (No calculations)',
-          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
-        ),
-        const SizedBox(height: 16),
-        
-        // Photo upload section removed as per request
-
-        ..._thicknessData.asMap().entries.map((entry) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _thicknessLocations.contains(_thicknessData[entry.key]['location']) 
-                              ? _thicknessData[entry.key]['location'] 
-                              : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Component *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                        ),
-                        items: _thicknessLocations.map((loc) {
-                          return DropdownMenuItem(value: loc, child: Text(loc));
-                        }).toList(),
-                        onChanged: (v) {
-                          if (v != null) {
-                             setState(() {
-                               _thicknessData[entry.key]['location'] = v;
-                             });
-                          }
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _removeThicknessEntry(entry.key),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  initialValue: _thicknessData[entry.key]['remarks'],
-                  decoration: const InputDecoration(
-                    labelText: 'Remarks (Optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (v) => _thicknessData[entry.key]['remarks'] = v,
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        OutlinedButton.icon(
-          onPressed: _addThicknessEntry,
-          icon: const Icon(Icons.add),
-          label: const Text('Add Thickness Measurement'),
-        ),
-        const SizedBox(height: 24),
-
-        // Defect Type (Finding) removed as per request
-
-        // Condition Dropdown for overall thickness assessment
-        _buildDropdownField(
-          label: 'Overall Thickness Condition *',
-          value: _thicknessCondition,
-          items: _conditionOptions,
-          onChanged: (v) {
-            setState(() {
-              _thicknessCondition = v;
-              if (v == 'Satisfactory') {
-                _thicknessSectionRecommendation = 'Nil';
-              } else if (v == 'Observation') {
-                _thicknessSectionRecommendation = 'Monitor';
-              }
-            });
-          },
-          hint: 'Select condition',
-        ),
-        const SizedBox(height: 16),
-
-        // Section Recommendation Dropdown
-        _buildDropdownField(
-          label: 'Section Recommendation *',
-          value: _thicknessSectionRecommendation,
-          items: _sectionRecommendationOptions,
-          onChanged: (v) => setState(() => _thicknessSectionRecommendation = v),
-          hint: 'Select recommendation',
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildSummarySection() {
@@ -2781,7 +2688,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
      }
 
      // INTERNAL
-     if (_requireInternal && _internalAccessible) {
+     if (_requireInternal) {
        for (var section in _internalSections) {
           String labelPrefix = '${section.sectionNumber}.1';
          if (section.photos.length > 1) {
@@ -2835,7 +2742,7 @@ class _InspectionWorkflowPageState extends State<InspectionWorkflowPage> {
         }
     }
     // Internal
-    if (_requireInternal && _internalAccessible) {
+    if (_requireInternal) {
         for (var get in _internalSections) {
             processRec(get.sectionNumber.toString(), get.photos.length, get.recommendation);
         }

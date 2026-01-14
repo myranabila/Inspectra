@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:async';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
+import '../services/messaging_service.dart';
 import '../my_tasks_page.dart';
 import '../history_page.dart';
 import '../threads_list_page.dart';
@@ -34,11 +36,41 @@ class CollapsibleSidebar extends StatefulWidget {
 
 class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
   String? _userRole;
+  int _unreadCount = 0;
+  Timer? _unreadCountTimer;
   
   @override
   void initState() {
     super.initState();
     _loadUserRole();
+    _loadUnreadCount();
+    // Poll for unread count every 30 seconds
+    _unreadCountTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadUnreadCount();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Auto-collapse if screen width is small (tablet/mobile)
+    final width = MediaQuery.of(context).size.width;
+    if (width < 1100 && !SidebarState.isCollapsed) {
+       // Use a post-frame callback to avoid setState during build
+       WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (mounted && !SidebarState.isCollapsed) {
+           setState(() {
+             SidebarState.setCollapsed(true);
+           });
+         }
+       });
+    }
+  }
+
+  @override
+  void dispose() {
+    _unreadCountTimer?.cancel();
+    super.dispose();
   }
   
   Future<void> _loadUserRole() async {
@@ -47,6 +79,19 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
       setState(() {
         _userRole = role;
       });
+    }
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final count = await MessagingService.getUnreadCount();
+      if (mounted) {
+        setState(() {
+          _unreadCount = count;
+        });
+      }
+    } catch (e) {
+      // Silently fail - not critical
     }
   }
   
@@ -107,6 +152,7 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
                     icon: Icons.dashboard_rounded,
                     label: 'Dashboard',
                     page: 'dashboard',
+                    // badgeCount removed for Dashboard
                     onTap: () {
                       if (isManager) {
                         _navigateTo(const ManagerDashboardPage());
@@ -166,7 +212,12 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
                     icon: Icons.message_rounded,
                     label: 'Messages',
                     page: 'messages',
-                    onTap: () => _navigateTo(const ThreadsListPage()),
+                    badgeCount: _unreadCount,
+                    onTap: () {
+                      _navigateTo(const ThreadsListPage());
+                      // Reload count after navigating to messages
+                      Future.delayed(const Duration(seconds: 1), _loadUnreadCount);
+                    },
                   ),
                   if (!isManager)
                     _buildNavItem(
@@ -241,77 +292,89 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          IconButton(
-            onPressed: _toggleSidebar,
-            icon: Icon(
-              SidebarState.isCollapsed ? Icons.menu_open_rounded : Icons.menu_rounded,
-              color: Colors.white,
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              onPressed: _toggleSidebar,
+              icon: Icon(
+                SidebarState.isCollapsed ? Icons.menu_open_rounded : Icons.menu_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+              tooltip: SidebarState.isCollapsed ? 'Expand Menu' : 'Collapse Menu',
+              padding: EdgeInsets.zero,
             ),
-            tooltip: SidebarState.isCollapsed ? 'Expand Menu' : 'Collapse Menu',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
           if (!SidebarState.isCollapsed) ...[
-            const SizedBox(width: 8),
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  'assets/ipetro_logo.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.business_rounded,
-                      color: Color(0xFFDC2626),
-                      size: 28,
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  RichText(
-                    text: TextSpan(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'assets/ipetro_logo.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.business_rounded,
+                              color: Color(0xFFDC2626),
+                              size: 28,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextSpan(
-                          text: 'i',
-                          style: GoogleFonts.inter(
-                            color: const Color(0xFF9CA3AF),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'i',
+                                style: GoogleFonts.inter(
+                                  color: const Color(0xFF9CA3AF),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'PETRO',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        TextSpan(
-                          text: 'PETRO',
+                        Text(
+                          isManager ? 'Manager Portal' : 'Inspector Portal',
                           style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Text(
-                    isManager ? 'Manager Portal' : 'Inspector Portal',
-                    style: GoogleFonts.inter(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -324,13 +387,17 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
     if (SidebarState.isCollapsed) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(left: 12, bottom: 8, top: 4),
-      child: Text(
-        title,
-        style: GoogleFonts.inter(
-          color: const Color(0xFF64748B),
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Text(
+          title,
+          style: GoogleFonts.inter(
+            color: const Color(0xFF64748B),
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1,
+          ),
         ),
       ),
     );
@@ -342,6 +409,7 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
     required String page,
     required VoidCallback onTap,
     bool isDestructive = false,
+    int badgeCount = 0,
   }) {
     final isActive = widget.currentPage == page;
     final color = isDestructive 
@@ -372,20 +440,72 @@ class _CollapsibleSidebarState extends State<CollapsibleSidebar> {
             child: Row(
               mainAxisAlignment: SidebarState.isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                Icon(icon, size: 20, color: color),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(icon, size: 20, color: color),
+                    if (badgeCount > 0 && SidebarState.isCollapsed)
+                      Positioned(
+                        right: -8,
+                        top: -8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryRed,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF1E293B), width: 2),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            badgeCount > 99 ? '99+' : badgeCount.toString(),
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 if (!SidebarState.isCollapsed) ...[ 
                   const SizedBox(width: 12),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: GoogleFonts.inter(
-                        color: color,
-                        fontSize: 14,
-                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Text(
+                        label,
+                        style: GoogleFonts.inter(
+                          color: color,
+                          fontSize: 14,
+                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                        maxLines: 1,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (badgeCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryRed,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        badgeCount > 99 ? '99+' : badgeCount.toString(),
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                 ],
               ],
             ),

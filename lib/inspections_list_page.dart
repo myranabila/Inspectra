@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
 import 'widgets/collapsible_sidebar.dart';
+import 'services/manager_service.dart';
+import 'services/auth_service.dart';
+import 'dart:html' as html; // Add html import
+import 'config/api_config.dart'; // Add api config import
+import 'inspection_workflow_page.dart'; // Add workflow page import
 
 class InspectionsListPage extends StatefulWidget {
   final String title;
@@ -23,6 +28,7 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
   bool _isLoading = true;
   List<dynamic> _inspections = [];
   String? _error;
+  String? _userRole;
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -32,7 +38,15 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
     super.initState();
     _animationController = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
     _fadeAnimation = CurvedAnimation(parent: _animationController, curve: Curves.easeOut);
+    _loadUserRole();
     _loadInspections();
+  }
+
+  Future<void> _loadUserRole() async {
+    final role = await AuthService.getUserRole();
+    setState(() {
+      _userRole = role;
+    });
   }
 
   @override
@@ -204,6 +218,7 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
     );
   }
 
+
   Widget _buildInspectionCard(dynamic inspection) {
     final status = inspection['status'] as String? ?? 'scheduled';
     final statusColor = AppTheme.getStatusColor(status);
@@ -216,8 +231,36 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            // Navigate to inspection detail
+          onTap: () async {
+            // Handle different inspection statuses
+            if (status == 'completed') {
+              // For completed inspections, open PDF in new tab
+              final pdfPath = inspection['pdf_report_path'];
+              if (pdfPath != null && pdfPath.toString().isNotEmpty) {
+                 final cleanPath = pdfPath.toString().replaceAll('\\', '/');
+                 final pdfUrl = '${ApiConfig.baseUrl}/$cleanPath';
+                 html.window.open(pdfUrl, '_blank');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PDF report not available')),
+                );
+              }
+            } else {
+              // For scheduled/pending/rejected inspections, navigate to workflow page
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => InspectionWorkflowPage(
+                    inspection: inspection,
+                  ),
+                ),
+              );
+              
+              // Refresh the list if inspection was updated
+              if (result == true) {
+                _loadInspections();
+              }
+            }
           },
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -253,7 +296,16 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
                   ),
                 ),
                 AppTheme.statusBadge(status),
-                const SizedBox(width: 12),
+                // Delete button -MANAGER ONLY
+                if (_userRole == 'manager') ...[
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted),
+                    tooltip: 'Delete Inspection',
+                    onPressed: () => _confirmDelete(inspection),
+                  ),
+                ],
+                const SizedBox(width: 4),
                 Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
               ],
             ),
@@ -261,5 +313,42 @@ class _InspectionsListPageState extends State<InspectionsListPage> with SingleTi
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(dynamic inspection) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Inspection'),
+        content: Text('Are you sure you want to delete "${inspection['title']}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await ManagerService.deleteInspection(inspection['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inspection deleted successfully')));
+        _loadInspections(); // Reload list
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+      }
+    }
   }
 }

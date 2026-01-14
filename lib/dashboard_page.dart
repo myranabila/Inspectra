@@ -18,6 +18,7 @@ import 'widgets/time_filter.dart';
 import 'widgets/dashboard_chart_widgets.dart';
 import 'package:intl/intl.dart';
 import 'utils/animations_config.dart';
+import 'inspection_workflow_page.dart';
 
 class DashboardModule extends StatefulWidget {
   const DashboardModule({super.key});
@@ -36,6 +37,7 @@ class _DashboardModuleState extends State<DashboardModule> with SingleTickerProv
   Map<String, dynamic>? _weeklyStats;
   Map<String, dynamic>? _upcomingInspection;
   List<dynamic> _recentActivity = [];
+  List<dynamic> _upcomingTasks = [];
 
   TimeFilterPeriod _selectedPeriod = TimeFilterPeriod.all;
   
@@ -90,11 +92,37 @@ class _DashboardModuleState extends State<DashboardModule> with SingleTickerProv
       final stats = await DashboardService.getDashboardMetrics(period: _selectedPeriod.toShortString()); 
       final upcoming = await DashboardService.getUpcomingInspection();
       final recent = await DashboardService.getRecentActivities();
+      
+      // Load upcoming tasks for inspectors
+      List<dynamic> tasks = [];
+      if (_userRole == 'inspector') {
+        try {
+          final allTasks = await DashboardService.getMyTasks();
+          tasks = allTasks.where((t) => 
+            t['status'] != 'completed' && 
+            t['status'] != 'pending_review'
+          ).toList();
+          
+          // Sort by due date (most urgent first)
+          tasks.sort((a, b) {
+            final aDate = DateTime.tryParse(a['due_date'] ?? '') ?? DateTime.now().add(const Duration(days: 999));
+            final bDate = DateTime.tryParse(b['due_date'] ?? '') ?? DateTime.now().add(const Duration(days: 999));
+            return aDate.compareTo(bDate);
+          });
+          
+          // Take top 5 most urgent
+          tasks = tasks.take(5).toList();
+        } catch (e) {
+          // Silently fail for tasks, don't break dashboard
+          tasks = [];
+        }
+      }
 
       setState(() {
         _statsData = stats;
         _upcomingInspection = upcoming;
         _recentActivity = recent;
+        _upcomingTasks = tasks;
         _loading = false;
       });
       _animationController.forward(from: 0);
@@ -643,9 +671,7 @@ class _DashboardModuleState extends State<DashboardModule> with SingleTickerProv
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                
-                // 2. Strict Metrics Grid (5 Cards)
+                // Stats Overview
                 Text(
                   'Overview',
                   style: GoogleFonts.inter(
@@ -658,9 +684,17 @@ class _DashboardModuleState extends State<DashboardModule> with SingleTickerProv
                 _buildStrictStatsGrid(),
                 const SizedBox(height: 32),
                 
-                // 3. Upcoming & Recent Row
-                // 3. Upcoming & Recent Row - REMOVED AS REQUESTED
-                // To restore, uncomment the LayoutBuilder block below
+                // Upcoming Inspections (formerly Reminders)
+                if (_userRole == 'inspector' && _upcomingTasks.isNotEmpty) ...[
+                  _buildRemindersSection(),
+                  const SizedBox(height: 32),
+                ],
+
+                // Recent Activity Section
+                if (_recentActivity.isNotEmpty) ...[
+                   _buildRecentActivitySection(),
+                   const SizedBox(height: 32),
+                ],
               ],
             ),
         ),
@@ -804,6 +838,817 @@ class _DashboardModuleState extends State<DashboardModule> with SingleTickerProv
       ),
     );
   }
+
+  Widget _buildWelcomeSection() {
+    final greeting = _getGreeting();
+    final name = _userName?.split(' ')[0] ?? 'Inspector';
+    
+    final overdueCount = _upcomingTasks.where((task) {
+      final dueDate = DateTime.tryParse(task['due_date'] ?? '');
+      return dueDate != null && dueDate.isBefore(DateTime.now());
+    }).length;
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryRed,
+            AppTheme.primaryRed.withValues(alpha: 0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryRed.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              overdueCount > 0 ? Icons.notification_important_rounded : Icons.waving_hand_rounded,
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$greeting, $name!',
+                  style: GoogleFonts.inter(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  overdueCount > 0
+                      ? 'You have $overdueCount overdue task${overdueCount > 1 ? "s" : ""} - immediate action required'
+                      : _upcomingTasks.isEmpty
+                          ? 'All caught up! No pending tasks'
+                          : 'You have ${_upcomingTasks.length} upcoming task${_upcomingTasks.length > 1 ? "s" : ""}',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_upcomingTasks.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    _upcomingTasks.length.toString(),
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primaryRed,
+                    ),
+                  ),
+                  Text(
+                    'Tasks',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedStatsGrid() {
+    final total = _statsData?['total'] ?? 0;
+    final scheduled = _statsData?['scheduled'] ?? 0;
+    final pending = _statsData?['pending_review'] ?? 0;
+    final completed = _statsData?['completed'] ?? 0;
+    final rejected = _statsData?['rejected'] ?? 0;
+
+    void navTo(String title, String? status) {
+      Navigator.push(
+        context,
+        SlidePageRoute(
+          page: InspectionsListPage(
+            title: title,
+            fetchFunction: () async {
+              final all = await DashboardService.getAllInspections();
+              if (status == null) return all;
+              return all.where((i) => i['status'] == status).toList();
+            },
+            headerColor: AppTheme.primaryRed,
+          ),
+        ),
+      );
+    }
+
+    final cards = [
+      _EnhancedStatCardData(
+        'Total Inspections',
+        total,
+        Icons.assignment_rounded,
+        [const Color(0xFF64748B), const Color(0xFF475569)],
+        onTap: () => navTo('All Inspections', null),
+      ),
+      _EnhancedStatCardData(
+        'Scheduled',
+        scheduled,
+        Icons.event_available_rounded,
+        [AppTheme.accentYellow, const Color(0xFFF59E0B)],
+        onTap: () => navTo('Scheduled Inspections', 'scheduled'),
+      ),
+      _EnhancedStatCardData(
+        'Pending Review',
+        pending,
+        Icons.pending_actions_rounded,
+        [const Color(0xFFF59E0B), const Color(0xFFD97706)],
+        onTap: () => navTo('Pending Review', 'pending_review'),
+      ),
+      _EnhancedStatCardData(
+        'Completed',
+        completed,
+        Icons.check_circle_rounded,
+        [AppTheme.primaryRed, const Color(0xFFB91C1C)],
+        onTap: () => navTo('Completed Inspections', 'completed'),
+      ),
+      _EnhancedStatCardData(
+        'Rejected',
+        rejected,
+        Icons.cancel_rounded,
+        [const Color(0xFFDC2626), const Color(0xFF991B1B)],
+        onTap: () => navTo('Rejected Inspections', 'rejected'),
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: MediaQuery.of(context).size.width > 1200 ? 5 : 
+                        MediaQuery.of(context).size.width > 800 ? 3 : 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.4,
+      ),
+      itemCount: cards.length,
+      itemBuilder: (context, index) => _buildEnhancedStatCard(cards[index]),
+    );
+  }
+
+  Widget _buildEnhancedStatCard(_EnhancedStatCardData card) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: card.gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: card.gradientColors[0].withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: card.onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        card.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.95),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(card.icon, color: Colors.white, size: 22),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  card.value.toString(),
+                  style: GoogleFonts.inter(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedRemindersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppTheme.accentYellow, AppTheme.accentYellow.withValues(alpha: 0.8)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Upcoming Deadlines',
+              style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                SlidePageRoute(page: const RemindersPage()),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('View All'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primaryRed,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: _upcomingTasks.asMap().entries.map((entry) {
+              final index = entry.key;
+              final task = entry.value;
+              final isLast = index == _upcomingTasks.length - 1;
+              return _buildEnhancedReminderCard(task, isLast);
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEnhancedReminderCard(Map<String, dynamic> task, bool isLast) {
+    final dueDate = DateTime.tryParse(task['due_date'] ?? '') ?? DateTime.now();
+    final title = task['title'] ?? 'Inspection Task';
+    final location = task['location'] ?? '';
+    
+    final now = DateTime.now();
+    final difference = dueDate.difference(now);
+    final isOverdue = difference.isNegative;
+    
+    Color priorityColor;
+    String priorityLabel;
+    IconData priorityIcon;
+    
+    if (isOverdue) {
+      priorityColor = AppTheme.statusRejected;
+      priorityLabel = 'OVERDUE';
+      priorityIcon = Icons.error_rounded;
+    } else if (difference.inHours < 24) {
+      priorityColor = AppTheme.primaryRed;
+      priorityLabel = 'URGENT';
+      priorityIcon = Icons.warning_rounded;
+    } else if (difference.inDays < 7) {
+      priorityColor = AppTheme.accentYellow;
+      priorityLabel = 'SOON';
+      priorityIcon = Icons.schedule_rounded;
+    } else {
+      priorityColor = AppTheme.textMuted;
+      priorityLabel = 'UPCOMING';
+      priorityIcon = Icons.calendar_today_rounded;
+    }
+    
+    String formatDate(DateTime dateTime) {
+      final diff = dateTime.difference(now);
+      if (diff.inDays == 0) return 'Today';
+      if (diff.inDays == 1) return 'Tomorrow';
+      if (diff.inDays == -1) return 'Yesterday';
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          try {
+            final inspection = await DashboardService.getInspectionDetails(task['id']);
+            if (!mounted || inspection == null) return;
+            Navigator.push(
+              context,
+              SlidePageRoute(
+                page: InspectionWorkflowPage(inspection: inspection),
+              ),
+            );
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              AppTheme.errorSnackBar(
+                context: context,
+                message: 'Failed to load inspection: $e',
+              ),
+            );
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            border: isLast ? null : Border(
+              bottom: BorderSide(color: Colors.grey.shade100),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: priorityColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: priorityColor.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(priorityIcon, size: 12, color: priorityColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      priorityLabel,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: priorityColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (location.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 13, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              location,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Due',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: AppTheme.textMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    formatDate(dueDate),
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isOverdue ? AppTheme.statusRejected : AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppTheme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildRecentActivitySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Recent Activity',
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _recentActivity.length,
+            separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.shade100),
+            itemBuilder: (context, index) => _buildActivityItem(_recentActivity[index]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityItem(dynamic activity) {
+    final status = activity['status'] as String? ?? 'updated';
+    final isCompleted = status == 'completed';
+    final isScheduled = status == 'scheduled';
+    
+    final iconColor = isCompleted ? AppTheme.primaryRed : 
+                      isScheduled ? AppTheme.accentYellow : Colors.blue;
+    final icon = isCompleted ? Icons.check_circle_outline_rounded :
+                 isScheduled ? Icons.calendar_today_rounded : Icons.edit_outlined;
+
+    return InkWell(
+      onTap: () {
+        // Optional: Navigate to history/details
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Text(
+                     activity['title'] ?? 'Title',
+                     style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                   ),
+                   const SizedBox(height: 4),
+                   Row(
+                     children: [
+                       Expanded(
+                         child: Text(
+                           activity['subtitle'] ?? 'Location',
+                           style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 12),
+                           overflow: TextOverflow.ellipsis,
+                         ),
+                       ),
+                       const SizedBox(width: 8),
+                       Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, shape: BoxShape.circle)),
+                       const SizedBox(width: 8),
+                       Text(
+                         _getTimeAgo(activity['timestamp']),
+                         style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 12),
+                       ),
+                     ],
+                   ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getTimeAgo(String? timestamp) {
+    if (timestamp == null) return '';
+    final date = DateTime.tryParse(timestamp);
+    if (date == null) return '';
+    final diff = DateTime.now().difference(date);
+    
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'Just now';
+  }
+
+  Widget _buildRemindersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Upcoming Inspections',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                SlidePageRoute(page: const RemindersPage()),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('View All'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primaryRed,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: AppTheme.softShadow,
+          ),
+          child: Column(
+            children: _upcomingTasks.map((task) => _buildCompactReminderCard(task)).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactReminderCard(Map<String, dynamic> task) {
+    final dueDate = DateTime.tryParse(task['due_date'] ?? '') ?? DateTime.now();
+    final title = task['title'] ?? 'Inspection Task';
+    final location = task['location'] ?? '';
+    
+    // Calculate priority
+    final now = DateTime.now();
+    final difference = dueDate.difference(now);
+    final isOverdue = difference.isNegative;
+    
+    Color priorityColor;
+    String priorityLabel;
+    IconData priorityIcon;
+    
+    if (isOverdue) {
+      priorityColor = AppTheme.statusRejected;
+      priorityLabel = 'OVERDUE';
+      priorityIcon = Icons.error_rounded;
+    } else if (difference.inHours < 24) {
+      priorityColor = AppTheme.primaryRed;
+      priorityLabel = 'URGENT';
+      priorityIcon = Icons.warning_rounded;
+    } else if (difference.inDays < 7) {
+      priorityColor = AppTheme.accentYellow;
+      priorityLabel = 'SOON';
+      priorityIcon = Icons.schedule_rounded;
+    } else {
+      priorityColor = AppTheme.textMuted;
+      priorityLabel = 'UPCOMING';
+      priorityIcon = Icons.calendar_today_rounded;
+    }
+    
+    String formatDate(DateTime dateTime) {
+      final difference = dateTime.difference(now);
+      if (difference.inDays == 0) return 'Today';
+      if (difference.inDays == 1) return 'Tomorrow';
+      if (difference.inDays == -1) return 'Yesterday';
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          try {
+            final inspection = await DashboardService.getInspectionDetails(task['id']);
+            if (!mounted || inspection == null) return;
+            Navigator.push(
+              context,
+              SlidePageRoute(
+                page: InspectionWorkflowPage(inspection: inspection),
+              ),
+            );
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to load inspection: $e')),
+            );
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Colors.grey.shade100),
+            ),
+          ),
+          child: Row(
+            children: [
+              // Priority badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: priorityColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: priorityColor.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(priorityIcon, size: 12, color: priorityColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      priorityLabel,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: priorityColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Task info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (location.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 12, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              location,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              // Due date
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Due',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: AppTheme.textMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    formatDate(dueDate),
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isOverdue ? AppTheme.statusRejected : AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppTheme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildUpcomingTaskCard() {
     if (_upcomingInspection == null) {
@@ -1249,3 +2094,21 @@ class _StatCardData {
 
   _StatCardData(this.title, this.value, this.icon, this.iconColor, this.bgColor, {this.onTap});
 }
+
+class _EnhancedStatCardData {
+  final String title;
+  final int value;
+  final IconData icon;
+  final List<Color> gradientColors;
+  final VoidCallback? onTap;
+
+  _EnhancedStatCardData(
+    this.title,
+    this.value,
+    this.icon,
+    this.gradientColors,
+    {this.onTap}
+  );
+}
+
+

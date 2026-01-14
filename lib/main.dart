@@ -132,6 +132,11 @@ class WorkshopApp extends StatelessWidget {
             ),
           ),
         ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppTheme.primaryRed,
+          linearTrackColor: Colors.transparent,
+          circularTrackColor: Colors.transparent,
+        ),
       ),
 
       initialRoute: '/login',

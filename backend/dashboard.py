@@ -57,6 +57,9 @@ def get_my_tasks(
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "report_number": insp.report_number,
+        "inspector_name": insp.inspector.username if insp.inspector else "Unassigned",
+        "dosh_registration": insp.dosh_registration,
         "notes": insp.notes,
         "rejection_reason": insp.rejection_reason,
         "rejection_feedback": insp.rejection_feedback,
@@ -65,6 +68,7 @@ def get_my_tasks(
         "require_weld": insp.require_weld,
         "require_internal": insp.require_internal,
         "require_thickness": insp.require_thickness,
+        "pdf_report_path": insp.pdf_report_path,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -127,6 +131,9 @@ def get_inspection_history(
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
+        "dosh_registration": insp.dosh_registration,
+        "pdf_report_path": insp.pdf_report_path,
+        "inspector_name": insp.inspector.username if insp.inspector else "Unassigned",
         "notes": insp.notes,
         "rejection_reason": insp.rejection_reason,
         "rejection_feedback": insp.rejection_feedback,
@@ -262,6 +269,8 @@ def get_recent_inspections(
         "equipment_id": insp.equipment_id,
         "equipment_type": insp.equipment_type,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
+        "dosh_registration": insp.dosh_registration,
+        "report_number": insp.report_number,
         "inspector": insp.inspector.username if insp.inspector else "Unassigned",
         "require_external": insp.require_external,
         "require_weld": insp.require_weld,
@@ -269,6 +278,57 @@ def get_recent_inspections(
         "require_thickness": insp.require_thickness,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
+
+@router.get("/inspections/{inspection_id}/details")
+def get_inspection_details(
+    inspection_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get details of a single inspection"""
+    
+    # Base query
+    query = db.query(models.Inspection).filter(models.Inspection.id == inspection_id)
+    
+    # Role-based access control - RELAXED for Chat Sharing
+    # Allow any authenticated user (Inspector or Manager) to view details of any inspection
+    # This enables clicking on shared tasks in chat to view the PDF report
+    # if current_user.role == models.RoleEnum.inspector:
+    #     # Inspector can only see their own inspections
+    #     query = query.filter(models.Inspection.inspector_id == current_user.id)
+        
+    inspection = query.first()
+    
+    if not inspection:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inspection not found"
+        )
+
+        
+    return {
+        "id": inspection.id,
+        "inspection_id_display": inspection.inspection_id_display,  # Added
+        "report_number": inspection.report_number,  # Added
+        "title": inspection.title,
+        "location": inspection.location,
+        "equipment_id": inspection.equipment_id,
+        "equipment_type": inspection.equipment_type,
+        "dosh_registration": inspection.dosh_registration,  # Added
+        "status": inspection.status.value,
+        "scheduled_date": inspection.scheduled_date.isoformat() if inspection.scheduled_date else None,
+        "completion_date": inspection.completion_date.isoformat() if inspection.completion_date else None,
+        "pdf_report_path": inspection.pdf_report_path, # Debug: Path verified
+
+        "notes": inspection.notes,
+        "inspector_name": inspection.inspector.username if inspection.inspector else None,  # Added
+        "inspector_id": inspection.inspector_id,
+        "require_external": inspection.require_external,
+        "require_weld": inspection.require_weld,
+        "require_internal": inspection.require_internal,
+        "require_thickness": inspection.require_thickness,
+        "created_at": inspection.created_at.isoformat()
+    }
 
 @router.get("/reports/recent")
 def get_recent_reports(
@@ -340,6 +400,10 @@ def get_all_inspections(
         "require_weld": insp.require_weld,
         "require_internal": insp.require_internal,
         "require_thickness": insp.require_thickness,
+        "report_number": insp.report_number,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
+        "dosh_registration": insp.dosh_registration,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -371,6 +435,10 @@ def get_completed_inspections(
         "id": insp.id,
         "title": insp.title,
         "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
+        "dosh_registration": insp.dosh_registration,
+        "inspector_name": insp.inspector.username if insp.inspector else "Unassigned",
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
@@ -410,6 +478,10 @@ def get_pending_review_inspections(
         "id": insp.id,
         "title": insp.title,
         "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
+        "dosh_registration": insp.dosh_registration,
+        "inspector_name": insp.inspector.username if insp.inspector else "Unassigned",
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
@@ -418,6 +490,7 @@ def get_pending_review_inspections(
         "require_weld": insp.require_weld,
         "require_internal": insp.require_internal,
         "require_thickness": insp.require_thickness,
+        "report_number": insp.report_number,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -465,6 +538,7 @@ def get_completed_this_month(
         "require_weld": insp.require_weld,
         "require_internal": insp.require_internal,
         "require_thickness": insp.require_thickness,
+        "report_number": insp.report_number,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -736,7 +810,8 @@ def get_inspection_pdf(
     return FileResponse(
         path=inspection.pdf_report_path,
         media_type="application/pdf",
-        filename=f"inspection_{inspection_id}_report.pdf"
+        filename=f"inspection_{inspection_id}_report.pdf",
+        content_disposition_type="inline"
     )
 
 @router.get("/inspections/scheduled")
@@ -767,6 +842,10 @@ def get_scheduled(
         "id": insp.id,
         "title": insp.title,
         "location": insp.location,
+        "equipment_id": insp.equipment_id,
+        "equipment_type": insp.equipment_type,
+        "dosh_registration": insp.dosh_registration,
+        "inspector_name": insp.inspector.username if insp.inspector else "Unassigned",
         "status": insp.status.value,
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
@@ -775,6 +854,7 @@ def get_scheduled(
         "require_weld": insp.require_weld,
         "require_internal": insp.require_internal,
         "require_thickness": insp.require_thickness,
+        "report_number": insp.report_number,
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 

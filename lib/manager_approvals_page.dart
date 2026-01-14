@@ -941,6 +941,19 @@ class _ManagerApprovalsPageState extends State<ManagerApprovalsPage> with Single
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Delete button
+                IconButton(
+                  onPressed: () => _confirmDelete(inspection),
+                  icon: Icon(Icons.delete_outline_rounded, color: AppTheme.statusRejected),
+                  tooltip: 'Delete Inspection',
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppTheme.statusRejected.withValues(alpha: 0.1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _viewDetails(inspection),
@@ -1066,7 +1079,7 @@ class _ManagerApprovalsPageState extends State<ManagerApprovalsPage> with Single
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInfoSection(Icons.person_rounded, 'Inspector', inspection['inspector'] ?? 'N/A', AppTheme.statusScheduled),
+                      _buildInfoSection(Icons.person_rounded, 'Inspected by', inspection['inspector'] ?? 'N/A', AppTheme.statusScheduled),
                       const SizedBox(height: 16),
                       _buildInfoSection(Icons.location_on_rounded, 'Location', inspection['location'] ?? 'N/A', AppTheme.statusCompleted),
                       if (inspection['scheduled_date'] != null) ...[
@@ -1228,6 +1241,62 @@ class _ManagerApprovalsPageState extends State<ManagerApprovalsPage> with Single
           backgroundColor: AppTheme.statusRejected,
         ),
       );
+    }
+  }
+
+  Future<void> _confirmDelete(dynamic inspection) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Inspection'),
+        content: Text('Are you sure you want to delete "${inspection['title']}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await ManagerService.deleteInspection(inspection['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle_rounded, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Inspection deleted successfully'),
+              ],
+            ),
+            backgroundColor: AppTheme.statusCompleted,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        _loadPendingInspections(); // Reload list
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: AppTheme.statusRejected,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 }

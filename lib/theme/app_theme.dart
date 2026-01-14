@@ -799,6 +799,94 @@ class AppTheme {
     );
   }
 
+  // ============ SNACKBAR ============
+  
+  /// Standard SnackBar with dismiss button
+  /// Use this for all app notifications to ensure consistency
+  static SnackBar standardSnackBar({
+    required BuildContext context,
+    required String message,
+    Color? backgroundColor,
+    IconData? icon,
+    Duration duration = const Duration(seconds: 4),
+    bool isError = false,
+  }) {
+    final bgColor = backgroundColor ?? 
+                    (isError ? statusRejected : primaryRed);
+    
+    return SnackBar(
+      content: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: bgColor,
+      duration: duration,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: radiusMD),
+      action: SnackBarAction(
+        label: 'X',
+        textColor: Colors.white,
+        onPressed: () {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        },
+      ),
+    );
+  }
+
+  /// Success SnackBar
+  static SnackBar successSnackBar({
+    required BuildContext context,
+    required String message,
+  }) {
+    return standardSnackBar(
+      context: context,
+      message: message,
+      backgroundColor: primaryRed,
+      icon: Icons.check_circle_rounded,
+    );
+  }
+
+  /// Error SnackBar
+  static SnackBar errorSnackBar({
+    required BuildContext context,
+    required String message,
+  }) {
+    return standardSnackBar(
+      context: context,
+      message: message,
+      backgroundColor: statusRejected,
+      icon: Icons.error_rounded,
+      isError: true,
+    );
+  }
+
+  /// Info SnackBar
+  static SnackBar infoSnackBar({
+    required BuildContext context,
+    required String message,
+  }) {
+    return standardSnackBar(
+      context: context,
+      message: message,
+      backgroundColor: accentYellow,
+      icon: Icons.info_rounded,
+    );
+  }
+
   /// Standard sidebar logo container
   /// Size: 56x56, BorderRadius: 16
   static Widget standardSidebarLogo({bool hasGlow = true}) {

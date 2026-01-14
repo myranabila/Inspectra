@@ -212,109 +212,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
     return grouped;
   }
 
-  Future<void> _setReminder(int inspectionId, String title) async {
-    final titleController = TextEditingController();
-    final messageController = TextEditingController();
-    DateTime? selectedDate;
-    TimeOfDay? selectedTime;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Set Reminder', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('For task: $title', style: GoogleFonts.inter(fontSize: 14)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: titleController,
-                  decoration: InputDecoration(
-                    labelText: 'Reminder Title',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: messageController,
-                  decoration: InputDecoration(
-                    labelText: 'Message (optional)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                          );
-                          if (date != null) setDialogState(() => selectedDate = date);
-                        },
-                        icon: const Icon(Icons.calendar_today, size: 18),
-                        label: Text(selectedDate != null ? '${selectedDate!.day}/${selectedDate!.month}' : 'Date'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                          if (time != null) setDialogState(() => selectedTime = time);
-                        },
-                        icon: const Icon(Icons.access_time, size: 18),
-                        label: Text(selectedTime != null ? '${selectedTime!.hour}:${selectedTime!.minute}' : 'Time'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryRed, foregroundColor: Colors.white),
-              child: const Text('Set'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed == true) {
-      if (titleController.text.trim().isEmpty || selectedDate == null || selectedTime == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please complete all fields'), backgroundColor: Colors.red));
-        return;
-      }
-
-      final remindAt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
-      try {
-        await MessagingService.createReminder(
-          inspectionId: inspectionId,
-          title: titleController.text,
-          message: messageController.text.isNotEmpty ? messageController.text : null,
-          remindAt: remindAt,
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder set!'), backgroundColor: AppTheme.primaryRed));
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -811,19 +708,6 @@ class _MyTasksPageState extends State<MyTasksPage> {
                     const Spacer(),
                     Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [AppTheme.primaryRed.withOpacity(0.1), AppTheme.primaryRed.withOpacity(0.05)]),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.primaryRed.withOpacity(0.15)),
-                      ),
-                      child: IconButton(
-                        icon: Icon(Icons.add_alert_rounded, color: AppTheme.primaryRed, size: 20),
-                        onPressed: () => _setReminder(task['id'], task['title'] ?? 'Inspection'),
-                        tooltip: 'Set Reminder',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      decoration: BoxDecoration(
                         gradient: LinearGradient(colors: [AppTheme.primaryRed, AppTheme.primaryRed.withOpacity(0.85)]),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [BoxShadow(color: AppTheme.primaryRed.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))],
@@ -869,48 +753,7 @@ class _MyTasksPageState extends State<MyTasksPage> {
     }
   }
 
-  Widget _buildRejectionBanner(dynamic task) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 22),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [const Color(0xFFFEF2F2), const Color(0xFFFEE2E2)]),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.statusRejected.withOpacity(0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: AppTheme.statusRejected.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(Icons.report_problem_rounded, color: AppTheme.statusRejected, size: 16),
-                ),
-                const SizedBox(width: 12),
-                Text('REVISION REQUIRED', style: GoogleFonts.inter(color: const Color(0xFF991B1B), fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.8)),
-              ]),
-              TextButton.icon(
-                onPressed: () => _viewPdfReport(task['id']),
-                icon: const Icon(Icons.picture_as_pdf_outlined, size: 16, color: Color(0xFF991B1B)),
-                label: Text('View Report', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF991B1B))),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  backgroundColor: Colors.white.withOpacity(0.6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ],
-          ),
-          if (task['rejection_reason'] != null) ...[const SizedBox(height: 14), Text('Reason: ${task['rejection_reason']}', style: GoogleFonts.inter(color: const Color(0xFFB91C1C), fontWeight: FontWeight.w600, fontSize: 13))],
-          if (task['rejection_feedback'] != null) ...[const SizedBox(height: 6), Text(task['rejection_feedback'], style: GoogleFonts.inter(color: Colors.grey.shade700, fontSize: 13, fontStyle: FontStyle.italic))],
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildTaskInfoChip(IconData icon, String label, String value) {
     return Container(
@@ -946,5 +789,145 @@ class _MyTasksPageState extends State<MyTasksPage> {
     } catch (e) {
       return dateStr.toString();
     }
+  }
+
+  Widget _buildRejectionBanner(dynamic task) {
+    final rejectionReason = task['rejection_reason'];
+    final rejectionFeedback = task['rejection_feedback'];
+    final rejectionCount = task['rejection_count'] ?? 1;
+    
+    if (rejectionReason == null) return const SizedBox.shrink();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.statusRejected.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.statusRejected.withOpacity(0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppTheme.statusRejected,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Rejected by Manager',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.statusRejected,
+                      ),
+                    ),
+                    if (rejectionCount > 1)
+                      Text(
+                        'Revision #$rejectionCount',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.statusRejected.withOpacity(0.7),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.statusRejected.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 16, color: AppTheme.statusRejected),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Reason:',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  rejectionReason,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: AppTheme.textPrimary,
+                    height: 1.5,
+                  ),
+                ),
+                if (rejectionFeedback != null && rejectionFeedback.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.lightbulb_outline_rounded, size: 16, color: Colors.amber.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Manager Feedback:',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                rejectionFeedback,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: Colors.amber.shade900,
+                                  fontStyle: FontStyle.italic,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

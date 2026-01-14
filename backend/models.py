@@ -96,6 +96,7 @@ class Inspection(Base):
     area = Column(String(100), nullable=True)  # NEW - replaces location
     equipment_id = Column(String(100), nullable=True)  # Equipment Tag Number
     equipment_type = Column(String(200), nullable=True)  # Equipment Type
+    dosh_registration = Column(String(100), nullable=True)  # DOSH Registration Number (manual entry)
     status = Column(Enum(InspectionStatusEnum), default=InspectionStatusEnum.scheduled, nullable=False)
     scheduled_date = Column(Date, nullable=True)  # Due Date
     completion_date = Column(Date, nullable=True)

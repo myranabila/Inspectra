@@ -129,6 +129,23 @@ class DashboardService {
     }
   }
 
+  // Get single inspection details
+  static Future<Map<String, dynamic>> getInspectionDetails(int id) async {
+    final token = await AuthService.getToken();
+    try {
+      final response = await ApiService.get(
+        url: '${ApiConfig.baseUrl}/dashboard/inspections/$id/details',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return response;
+    } catch (e) {
+      throw Exception('Failed to load inspection details: $e');
+    }
+  }
+
   // Get completed inspections (Reports Generated)
   static Future<List<dynamic>> getCompletedInspections() async {
     final token = await AuthService.getToken();
@@ -387,8 +404,8 @@ class DashboardService {
           'id': inspection['id'],
           'type': 'inspection',
           'action': action,
-          'title': inspection['client_name'] ?? 'Unknown Client',
-          'subtitle': inspection['site_location'] ?? 'Unknown Location',
+          'title': inspection['title'] ?? 'Unknown Title',
+          'subtitle': inspection['location'] ?? 'Unknown Location',
           'timestamp': inspection['updated_at'] ?? inspection['created_at'],
           'status': status,
         };

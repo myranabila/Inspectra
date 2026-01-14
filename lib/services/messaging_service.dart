@@ -70,6 +70,7 @@ class MessagingService {
     
     request.fields['receiver_id'] = receiverId.toString();
     request.fields['content'] = content;
+    request.fields['created_at'] = DateTime.now().toIso8601String(); // Send client time
     
     if (subject != null) request.fields['subject'] = subject;
     if (replyToId != null) request.fields['reply_to_id'] = replyToId.toString();
@@ -96,6 +97,22 @@ class MessagingService {
       }
     } catch (e) {
       throw Exception('Failed to send message: $e');
+    }
+  }
+
+  // Delete message
+  static Future<void> deleteMessage(int messageId) async {
+    final token = await AuthService.getToken();
+    try {
+      await ApiService.delete(
+        url: '$baseUrl/$messageId',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (e) {
+      throw Exception('Failed to delete message: $e');
     }
   }
 

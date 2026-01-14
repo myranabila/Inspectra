@@ -59,6 +59,18 @@ app.add_middleware(
     expose_headers=["*"],  # Expose all headers
 )
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Create uploads directory if not exists
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("reports", exist_ok=True)  # Create reports directory too
+
+# Mount uploads directory
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Mount reports directory for serving PDF files
+app.mount("/reports", StaticFiles(directory="reports"), name="reports")
+
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(manager_router, prefix="/manager", tags=["Manager"])

@@ -17,7 +17,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _equipmentIdController = TextEditingController();
-
+  final _doshRegistrationController = TextEditingController();  // DOSH Registration Number
 
   final _notesController = TextEditingController();
   final _reportNumberController = TextEditingController(text: 'Auto-generated (RPT-${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}...)');
@@ -73,6 +73,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   void dispose() {
     _titleController.dispose();
     _equipmentIdController.dispose();
+    _doshRegistrationController.dispose();  // Dispose DOSH controller
 
     _notesController.dispose();
     _reportNumberController.dispose();
@@ -122,9 +123,9 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
 
     if (_selectedInspectorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an inspector'),
-          backgroundColor: Colors.orange,
+        AppTheme.infoSnackBar(
+          context: context,
+          message: 'Please select an inspector',
         ),
       );
       return;
@@ -135,9 +136,9 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       final validTypes = _equipmentByLocation[_selectedLocationId];
       if (validTypes == null || !validTypes.contains(_selectedEquipmentType)) {
          ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invalid Equipment Type "$_selectedEquipmentType" for Location "$_selectedLocationId".'),
-            backgroundColor: Colors.red,
+          AppTheme.errorSnackBar(
+            context: context,
+            message: 'Invalid Equipment Type "$_selectedEquipmentType" for Location "$_selectedLocationId".',
           ),
         );
         return;
@@ -146,9 +147,9 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
 
     if (_scheduledDate == null) {
        ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a scheduled date (When)'),
-          backgroundColor: Colors.orange,
+        AppTheme.infoSnackBar(
+          context: context,
+          message: 'Please select a scheduled date (When)',
         ),
       );
       return;
@@ -171,6 +172,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
         inspectionTitle: _titleController.text.trim(),
         inspectionType: _selectedEquipmentType ?? '',
         equipmentTag: _equipmentIdController.text.trim(),
+        doshRegistration: _doshRegistrationController.text.trim(),  // Pass DOSH registration
         location: _selectedLocationId ?? '',
         dueDate:
             scheduledDateStr ??
@@ -192,10 +194,9 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       )['username'];
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Task successfully assigned to $inspectorName'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
+        AppTheme.successSnackBar(
+          context: context,
+          message: 'Task successfully assigned to $inspectorName',
         ),
       );
 
@@ -207,7 +208,10 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        AppTheme.errorSnackBar(
+          context: context,
+          message: 'Error: $e',
+        ),
       );
     } finally {
       if (mounted) {
@@ -775,6 +779,51 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                                                             ),
                                                         ],
                                                       ),
+                                                      
+                                                      // DOSH Registration Number field
+                                                      const SizedBox(height: 24),
+                                                      Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text('DOSH Registration Number', style: _labelStyle()),
+                                                          const SizedBox(height: 12),
+                                                          TextFormField(
+                                                            controller: _doshRegistrationController,
+                                                            decoration: _inputDecoration(_getDoshHint()).copyWith(
+                                                              filled: true,
+                                                              fillColor: Colors.white,
+                                                              prefixIcon: const Icon(Icons.badge_outlined, color: Colors.grey),
+                                                            ),
+                                                            style: GoogleFonts.robotoMono(fontSize: 14),
+                                                            validator: (value) => 
+                                                                (value?.trim().isEmpty ?? true) ? 'DOSH Registration is required' : null,
+                                                          ),
+                                                          const SizedBox(height: 8),
+                                                          RichText(
+                                                            text: TextSpan(
+                                                              style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[600]),
+                                                              children: const [
+                                                                TextSpan(text: 'Format: '),
+                                                                TextSpan(
+                                                                  text: 'DOSH/PV/[State]/[Year]/[Number]-[Code]',
+                                                                  style: TextStyle(fontFamily: 'monospace'),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 4),
+                                                          Text(
+                                                            _selectedEquipmentType != null 
+                                                                ? 'Example: ${_getDoshExample()}'
+                                                                : 'Example: DOSH/PV/SEL/2024/001-R',
+                                                            style: GoogleFonts.inter(
+                                                              fontSize: 11,
+                                                              color: Colors.grey[600],
+                                                              fontWeight: FontWeight.w500,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ],
                                                   ),
                                                 ),
@@ -801,16 +850,16 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                                                     TextButton(
                                                       onPressed: () {
                                                         setState(() {
-                                                          final bool allSelected = _requireExternal && _requireWeld && _requireInternal && _requireThickness;
+                                                          final bool allSelected = _requireExternal && _requireWeld && _requireInternal;
                                                           final bool newState = !allSelected;
                                                           _requireExternal = newState;
                                                           _requireWeld = newState;
                                                           _requireInternal = newState;
-                                                          _requireThickness = newState;
+                                                          _requireThickness = false; // Always false
                                                         });
                                                       },
                                                       child: Text(
-                                                        (_requireExternal && _requireWeld && _requireInternal && _requireThickness) ? 'Clear All' : 'Select All',
+                                                        (_requireExternal && _requireWeld && _requireInternal) ? 'Clear All' : 'Select All',
                                                         style: GoogleFonts.inter(
                                                           fontSize: 13,
                                                           fontWeight: FontWeight.w600,
@@ -856,16 +905,6 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                                                             icon: Icons.sensor_door_outlined,
                                                             isSelected: _requireInternal,
                                                             onTap: () => setState(() => _requireInternal = !_requireInternal),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 12),
-                                                        Expanded(
-                                                          child: _buildScopeCard(
-                                                            title: 'Thickness',
-                                                            subtitle: 'UT measurements points',
-                                                            icon: Icons.straighten_outlined,
-                                                            isSelected: _requireThickness,
-                                                            onTap: () => setState(() => _requireThickness = !_requireThickness),
                                                           ),
                                                         ),
                                                       ],
@@ -1039,5 +1078,47 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
         ),
       ),
     );
+  }
+
+  /// Get DOSH hint text based on selected equipment type
+  String _getDoshHint() {
+    if (_selectedEquipmentType == null) {
+      return 'Select equipment type first';
+    }
+    
+    switch (_selectedEquipmentType) {
+      case 'Reactor':
+        return 'e.g., DOSH/PV/SEL/2024/001-R';
+      case 'Pressure Vessel':
+        return 'e.g., DOSH/PV/SEL/2024/002-PV';
+      case 'Heat Exchanger':
+        return 'e.g., DOSH/PV/SEL/2024/003-HE';
+      case 'Storage Tank':
+        return 'e.g., DOSH/PV/SEL/2024/004-ST';
+      case 'Tower':
+        return 'e.g., DOSH/PV/SEL/2024/005-TW';
+      default:
+        return 'DOSH/PV/[State]/[Year]/[Number]-[Code]';
+    }
+  }
+
+  /// Get DOSH example based on selected equipment type
+  String _getDoshExample() {
+    if (_selectedEquipmentType == null) return '';
+    
+    switch (_selectedEquipmentType) {
+      case 'Reactor':
+        return 'DOSH/PV/SEL/2024/001-R';
+      case 'Pressure Vessel':
+        return 'DOSH/PV/SEL/2024/002-PV';
+      case 'Heat Exchanger':
+        return 'DOSH/PV/SEL/2024/003-HE';
+      case 'Storage Tank':
+        return 'DOSH/PV/SEL/2024/004-ST';
+      case 'Tower':
+        return 'DOSH/PV/SEL/2024/005-TW';
+      default:
+        return '';
+    }
   }
 }

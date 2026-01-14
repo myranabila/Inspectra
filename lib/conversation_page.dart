@@ -8,6 +8,8 @@ import 'services/messaging_service.dart';
 import 'services/auth_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/manager_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'config/api_config.dart';
 import 'config/api_config.dart';
 
 class ConversationPage extends StatefulWidget {
@@ -178,7 +180,7 @@ class _ConversationPageState extends State<ConversationPage> {
         content: SizedBox(
           width: double.maxFinite,
           child: FutureBuilder<List<dynamic>>(
-            future: DashboardService.getMyTasks(),
+            future: DashboardService.getAllInspections(), // Changed to allow Managers to see tasks
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -220,6 +222,96 @@ class _ConversationPageState extends State<ConversationPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleTaskClick(int inspectionId) async {
+    try {
+      // Fetch inspection details
+      final inspectionDetails = await DashboardService.getInspectionDetails(inspectionId);
+      
+      final pdfPath = inspectionDetails['pdf_report_path']; // Correct key
+      
+      if (pdfPath == null || pdfPath.toString().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF not available for this inspection'))
+          );
+        }
+        return;
+      }
+
+      // Open PDF in new browser tab
+      // Ensure path is URL-friendly
+      final cleanPath = pdfPath.toString().replaceAll('\\', '/');
+      final pdfUrl = '${ApiConfig.baseUrl}/$cleanPath'; // Ensure slash separator
+      
+      if (await canLaunchUrl(Uri.parse(pdfUrl))) {
+        await launchUrl(
+          Uri.parse(pdfUrl),
+          mode: LaunchMode.platformDefault,
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open PDF'))
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening PDF: $e'))
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteMessage(int messageId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: const Text('Are you sure you want to delete this message?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+
+    if (confirm == true) {
+      if (!mounted) return;
+      
+      // Optimistic update: remove from list immediately
+      setState(() {
+         // Create new list to avoid modifying reference if needed, though setState handles rebuild
+         // But finding index is better.
+      });
+
+      try {
+        await MessagingService.deleteMessage(messageId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Message deleted'), duration: Duration(seconds: 2)),
+          );
+          _loadMessages(); // Refresh to ensure sync
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildMessages() {
@@ -267,54 +359,65 @@ class _ConversationPageState extends State<ConversationPage> {
         
         return Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.5),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isMe ? AppTheme.primaryRed : Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isMe ? 16 : 4),
-                bottomRight: Radius.circular(isMe ? 4 : 16),
+          child: GestureDetector(
+            onLongPress: isMe ? () => _deleteMessage(msg['id']) : null,
+            onSecondaryTap: isMe ? () => _deleteMessage(msg['id']) : null,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.5),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isMe ? AppTheme.primaryRed : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 16),
+                ),
+                boxShadow: AppTheme.softShadow,
               ),
-              boxShadow: AppTheme.softShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Linked Task from Content Embedding OR DB
                 if (linkedTaskId != null || msg['inspection_id'] != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFF1F5F9),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: InkWell(
+                      onTap: () => _handleTaskClick(int.tryParse(linkedTaskId ?? msg['inspection_id'].toString())!),
                       borderRadius: BorderRadius.circular(10),
-                      border: isMe ? null : Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                         Icon(Icons.assignment_rounded, size: 20, color: isMe ? Colors.white : AppTheme.primaryRed),
-                         const SizedBox(width: 10),
-                         Expanded(
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                               Text(
-                                 'Linked Task',
-                                 style: GoogleFonts.inter(fontSize: 10, color: isMe ? Colors.white70 : AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                      hoverColor: isMe ? Colors.white.withValues(alpha: 0.1) : AppTheme.primaryRed.withValues(alpha: 0.05),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: isMe ? null : Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                             Icon(Icons.assignment_rounded, size: 20, color: isMe ? Colors.white : AppTheme.primaryRed),
+                             const SizedBox(width: 10),
+                             Expanded(
+                               child: Column(
+                                 crossAxisAlignment: CrossAxisAlignment.start,
+                                 children: [
+                                   Text(
+                                     'Linked Task',
+                                     style: GoogleFonts.inter(fontSize: 10, color: isMe ? Colors.white70 : AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                                   ),
+                                   Text(
+                                     linkedTaskTitle ?? msg['inspection_title'] ?? 'Inspection #${linkedTaskId ?? msg['inspection_id']}',
+                                     style: GoogleFonts.inter(fontSize: 14, color: isMe ? Colors.white : AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                                   ),
+                                 ],
                                ),
-                               Text(
-                                 linkedTaskTitle ?? msg['inspection_title'] ?? 'Inspection #${linkedTaskId ?? msg['inspection_id']}',
-                                 style: GoogleFonts.inter(fontSize: 14, color: isMe ? Colors.white : AppTheme.textPrimary, fontWeight: FontWeight.w600),
-                               ),
-                             ],
-                           ),
-                         )
-                      ],
+                             )
+                          ],
+                        ),
+                      ),
                     ),
                   ),
 
@@ -358,7 +461,8 @@ class _ConversationPageState extends State<ConversationPage> {
                     content,
                     style: GoogleFonts.inter(fontSize: 14, color: isMe ? Colors.white : AppTheme.textPrimary, height: 1.5),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         );

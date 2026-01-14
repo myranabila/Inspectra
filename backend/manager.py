@@ -16,6 +16,7 @@ class AssignTaskRequest(BaseModel):
     inspection_type: str
     location: str
     equipment_tag: str
+    dosh_registration: str = None  # DOSH Registration Number (manual entry)
     due_date: str
     require_external: bool = True
     require_weld: bool = False
@@ -106,6 +107,7 @@ def assign_task(
         area=request.location,  # Also store in area field
         equipment_id=request.equipment_tag,
         equipment_type=request.inspection_type,  # Use actual type from request
+        dosh_registration=request.dosh_registration,  # DOSH Registration Number
         inspector_id=request.inspector_id,
         status=models.InspectionStatusEnum.scheduled,
         scheduled_date=scheduled_date_obj,
@@ -152,6 +154,8 @@ def get_all_inspections(
         "scheduled_date": insp.scheduled_date.isoformat() if insp.scheduled_date else None,
         "completion_date": insp.completion_date.isoformat() if insp.completion_date else None,
         "notes": insp.notes,
+        "report_number": insp.report_number,
+        "pdf_report_path": insp.pdf_report_path,  # Added for viewing completed reports
         "created_at": insp.created_at.isoformat()
     } for insp in inspections]
 
@@ -168,6 +172,7 @@ def get_pending_inspections(
     return [{
         "id": insp.id,
         "inspection_id_display": insp.inspection_id_display,  # For Edit Dialog
+        "report_number": insp.report_number,
         "title": insp.title,
         "location": insp.location,
         "equipment_tag": insp.equipment_id,  # For Edit Dialog
@@ -552,12 +557,13 @@ class UpdateInspectionRequest(BaseModel):
     inspection_type: str
 
 # Area-Equipment Type validation mapping
+# Must match frontend assign_task_page.dart _staticLocations
 AREA_EQUIPMENT_MAP = {
-    'Plant 1': ['Reactor', 'Pressure Vessel', 'Heat Exchanger'],
-    'Plant 2': ['Storage Tank', 'Tower', 'Pressure Vessel'],
-    'Utility Area': ['Heat Exchanger', 'Storage Tank'],
-    'Offsite Area': ['Storage Tank', 'Tower'],
-    'Process Area': ['Reactor', 'Pressure Vessel', 'Heat Exchanger', 'Tower'],
+    'Process Area': ['Pressure Vessel', 'Reactor', 'Heat Exchanger'],
+    'Utility Area': ['Pressure Vessel'],
+    'Main Deck': ['Pressure Vessel'],
+    'Wellhead Area': ['Pressure Vessel'],
+    'Offsite Facilities': ['Pressure Vessel'],
 }
 
 # MANAGER-ONLY: Update inspection details (Area and Equipment Type)
@@ -610,4 +616,42 @@ def update_inspection(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update inspection: {str(e)}"
+        )
+
+# MANAGER-ONLY: Delete inspection
+@router.delete("/delete/inspection/{inspection_id}", dependencies=[Depends(require_manager)])
+def delete_inspection(
+    inspection_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an inspection and its associated data - MANAGERS ONLY"""
+    inspection = db.query(models.Inspection).filter(
+        models.Inspection.id == inspection_id
+    ).first()
+    
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    
+    try:
+        # Delete associated reminders
+        db.query(models.Reminder).filter(models.Reminder.inspection_id == inspection_id).delete()
+        
+        # Delete associated reports
+        db.query(models.Report).filter(models.Report.inspection_id == inspection_id).delete()
+        
+        # Nullify inspection_id in messages (preserve communication history)
+        db.query(models.Message).filter(models.Message.inspection_id == inspection_id).update({"inspection_id": None})
+        
+        # Delete the inspection
+        db.delete(inspection)
+        db.commit()
+        
+        return {"message": f"Inspection {inspection.inspection_id_display or inspection_id} deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete inspection: {str(e)}"
         )
